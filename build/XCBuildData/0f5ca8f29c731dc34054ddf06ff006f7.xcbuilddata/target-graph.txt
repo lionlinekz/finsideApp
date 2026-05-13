@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'FinsideApp' in project 'FinsideApp'
+➜ Explicit dependency on target 'FinsideShareExtension' in project 'FinsideApp'
+Target 'FinsideShareExtension' in project 'FinsideApp' (no dependencies)

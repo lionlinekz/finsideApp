@@ -1,0 +1,16 @@
+{
+  "" : {
+    "const-values" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary.swiftconstvalues",
+    "dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary.d",
+    "diagnostics" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary-emit-module.dia",
+    "pch" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/FinsideShareExtension-primary.swiftdeps"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideShareExtension/ShareViewController.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/ShareViewController.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/ShareViewController.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release-iphoneos/FinsideShareExtension.build/Objects-normal/arm64/ShareViewController.o"
+  }
+}

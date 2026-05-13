@@ -1,0 +1,151 @@
+{
+  "" : {
+    "const-values" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.swiftconstvalues",
+    "dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.d",
+    "diagnostics" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.dia",
+    "emit-module-dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary-emit-module.dia",
+    "pch" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.swiftdeps"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/ContentView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/FinsideAppApp.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideAppApp.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideAppApp.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideAppApp.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Models/ChatModels.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatModels.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatModels.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatModels.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Models/DashboardModels.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/DashboardModels.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/DashboardModels.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/DashboardModels.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Models/Money.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/Money.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/Money.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/Money.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/APIService.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/APIService.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/APIService.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/APIService.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/AppState.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AppState.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AppState.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AppState.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/BiometricService.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/BiometricService.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/BiometricService.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/BiometricService.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/ChatService.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatService.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatService.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatService.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/KeychainService.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/KeychainService.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/KeychainService.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/KeychainService.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Services/WebSocketClient.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/WebSocketClient.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/WebSocketClient.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/WebSocketClient.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/AvatarMenuButton.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AvatarMenuButton.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AvatarMenuButton.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/AvatarMenuButton.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/CalendarTabView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/CalendarTabView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/CalendarTabView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/CalendarTabView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/ChatDetailView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatDetailView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatDetailView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatDetailView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/ChatListView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatListView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatListView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatListView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/MessageCells/ApprovalWidgetCell.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ApprovalWidgetCell.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ApprovalWidgetCell.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ApprovalWidgetCell.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/MessageCells/ImportSummaryCell.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ImportSummaryCell.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ImportSummaryCell.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ImportSummaryCell.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/MessageCells/OperationLogCell.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/OperationLogCell.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/OperationLogCell.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/OperationLogCell.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/MessageCells/TextMessageCell.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/TextMessageCell.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/TextMessageCell.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/TextMessageCell.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/Chat/PendingApprovalCard.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PendingApprovalCard.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PendingApprovalCard.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PendingApprovalCard.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/ChatsView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatsView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatsView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/ChatsView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/HomeView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/HomeView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/HomeView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/HomeView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/LockScreenView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LockScreenView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LockScreenView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LockScreenView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/LoginView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LoginView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LoginView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/LoginView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/MainTabView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/MainTabView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/MainTabView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/MainTabView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/PinSetupView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PinSetupView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PinSetupView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/PinSetupView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Views/SettingsView.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/SettingsView.o"
+  },
+  "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "/Users/assetsarsengaliyev/FinsideApp/FinsideApp/Models/ChatModels.swift" : {
+    "abi-baseline-json" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp.abi.json",
+    "const-values" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.swiftconstvalues",
+    "dependencies" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.d",
+    "diagnostics" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-primary.dia",
+    "objc-header" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp-Swift.h",
+    "swiftdoc" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp.swiftdoc",
+    "swiftmodule" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp.swiftmodule",
+    "swiftsourceinfo" : "/Users/assetsarsengaliyev/FinsideApp/build/FinsideApp.build/Release/FinsideApp.build/Objects-normal/arm64/FinsideApp.swiftsourceinfo"
+  }
+}

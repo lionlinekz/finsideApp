@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/assetsarsengaliyev/FinsideApp/build/Release-iphoneos/FinsideShareExtension.appex/FinsideShareExtension'
+relocations:     []
+...

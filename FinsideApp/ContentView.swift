@@ -4,18 +4,14 @@
 //
 //  Created by Asset Sarsengaliyev on 13.03.2026.
 //
+//  This file is no longer used. See FinsideAppApp.swift → RootView.
+//
 
 import SwiftUI
 
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
-        }
-        .padding()
+        MainTabView()
     }
 }
 
