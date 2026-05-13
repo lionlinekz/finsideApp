@@ -121,6 +121,8 @@ struct HomeView: View {
     @State private var periodSwipeSheenPhase: CGFloat = 0
     /// Смещение ленты дашборда за пальцем (pt), с упругим сбросом.
     @State private var periodSwipeNudgeX: CGFloat = 0
+    /// Раскрытый блок «Банковские счета» под «Денежный остаток» (тап по остатку).
+    @State private var expandedBankAccountsUnderOstatok = false
 
     /// Мягкое ограничение как у растягивания у края экрана.
     private static func swipeRubberNudge(dx: CGFloat) -> CGFloat {
@@ -173,6 +175,7 @@ struct HomeView: View {
             .sheet(isPresented: $showMonthPicker) { monthPickerSheet }
             .onAppear { if !appeared { appeared = true; loadData() } }
             .onChange(of: selectedPeriod) { _, _ in
+                expandedBankAccountsUnderOstatok = false
                 resetAnchorsForNewPeriod()
                 loadData()
             }
@@ -316,7 +319,9 @@ struct HomeView: View {
                 comparison: d.comparison,
                 taxDisplay: tax,
                 ringTargets: d.ringTargets,
-                periodType: d.period.type
+                periodType: d.period.type,
+                bankAccounts: d.bankAccounts,
+                showBankAccountsExpanded: $expandedBankAccountsUnderOstatok
             )
 
             if !d.managers.isEmpty {
@@ -327,9 +332,6 @@ struct HomeView: View {
             }
             if !d.incomeByMethod.isEmpty || !d.incomeByBank.isEmpty {
                 sectionBlock("Источники доходов") { paymentSourcesSection(d) }
-            }
-            if let banks = d.bankAccounts, !banks.isEmpty {
-                sectionBlock("Банковские счета") { bankAccountsSnapshotSection(banks) }
             }
             let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
             if expenseAccountSplitTotal > 0 {
@@ -363,9 +365,12 @@ struct HomeView: View {
         comparison prev: PeriodComparison,
         taxDisplay: (amount: Double, hint: String),
         ringTargets: RingTargets?,
-        periodType: String
+        periodType: String,
+        bankAccounts: [DashboardBankAccount]?,
+        showBankAccountsExpanded: Binding<Bool>
     ) -> some View {
-        VStack(spacing: 16) {
+        let hasBankAccounts = !(bankAccounts ?? []).isEmpty
+        return VStack(spacing: 16) {
             // Rings + блок с кольцами
             ZStack {
                 Color(.secondarySystemGroupedBackground)
@@ -381,17 +386,46 @@ struct HomeView: View {
                     .buttonStyle(.dashboardPressable)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Денежный остаток")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                            Text(fmt(s.profit))
-                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                .foregroundStyle(s.profit >= 0 ? Color.fIncome : Color.fExpense)
+                        Group {
+                            if hasBankAccounts {
+                                Button {
+                                    showBankAccountsExpanded.wrappedValue.toggle()
+                                    DashboardHaptics.lightImpact()
+                                } label: {
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Денежный остаток")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                            Text(fmt(s.profit))
+                                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                                .foregroundStyle(s.profit >= 0 ? Color.fIncome : Color.fExpense)
 
-                            let d = deltaPct(s.profit, prev.prevProfit)
-                            if let d {
-                                deltaLabel(d)
+                                            if let d = deltaPct(s.profit, prev.prevProfit) {
+                                                deltaLabel(d)
+                                            }
+                                        }
+                                        Spacer(minLength: 4)
+                                        Image(systemName: showBankAccountsExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint("Показать или скрыть остатки по банковским счетам")
+                            } else {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Денежный остаток")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Text(fmt(s.profit))
+                                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                                        .foregroundStyle(s.profit >= 0 ? Color.fIncome : Color.fExpense)
+
+                                    if let d = deltaPct(s.profit, prev.prevProfit) {
+                                        deltaLabel(d)
+                                    }
+                                }
                             }
                         }
 
@@ -410,6 +444,11 @@ struct HomeView: View {
                 .padding(16)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            if hasBankAccounts, showBankAccountsExpanded.wrappedValue, let banks = bankAccounts {
+                bankAccountsSnapshotSection(banks)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             // Metric row
             HStack(alignment: .top, spacing: 10) {
@@ -455,6 +494,7 @@ struct HomeView: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
+        .animation(.easeInOut(duration: 0.22), value: showBankAccountsExpanded.wrappedValue)
     }
 
     private func ringsView(_ s: DashboardSummary, taxAmount: Double, targets: RingTargets?) -> some View {
@@ -1452,6 +1492,9 @@ struct HomeView: View {
             await MainActor.run {
                 primaryBranch = picked
                 dashboard = loaded
+                if loaded.bankAccounts?.isEmpty != false {
+                    expandedBankAccountsUnderOstatok = false
+                }
             }
         } catch is CancellationError {
             // Потянули refresh или сменили вкладку — не показываем ошибку.
