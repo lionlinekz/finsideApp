@@ -3,18 +3,17 @@ import Foundation
 /// Оценка налога на главной: значение `potential_tax` с API (если есть),
 /// иначе эффективная ставка из `/branches/`, иначе код режима из summary / tax_mode компании.
 enum DashboardDisplayTax {
-    /// База для оценки «с продаж»: на бэкенде в дашборде `revenue` только категория SALES.
-    /// Если доходы в других категориях, для налога используем весь доход за период.
-    private static func effectiveRevenueForTax(_ summary: DashboardSummary) -> Double {
-        if summary.revenue > 0 { return summary.revenue }
-        return summary.totalIncome
+    /// База «с выручки» в ответе API и филиала — для оценки в UI совпадает с **всеми поступлениями**
+    /// за период (`total_income`), не только категорией SALES.
+    private static func taxBaseFromAllReceipts(_ summary: DashboardSummary) -> Double {
+        summary.totalIncome
     }
 
     static func compute(
         summary: DashboardSummary,
         primaryBranch: BranchCompany?
     ) -> (amount: Double, hint: String) {
-        let revBase = effectiveRevenueForTax(summary)
+        let receiptsBase = taxBaseFromAllReceipts(summary)
         if let server = summary.potentialTax {
             let code = summary.taxRegimeCode?.uppercased() ?? ""
             let profitBased = code == "OUR" || code == "TOO_CIT_GENERAL"
@@ -32,7 +31,7 @@ enum DashboardDisplayTax {
         }
         return amountForRegimeCode(
             summary.taxRegimeCode,
-            revenue: revBase,
+            revenue: receiptsBase,
             profit: summary.profit
         )
     }
@@ -47,7 +46,7 @@ enum DashboardDisplayTax {
         }
         return amountForRegimeCode(
             summary.taxRegimeCode,
-            revenue: effectiveRevenueForTax(summary),
+            revenue: taxBaseFromAllReceipts(summary),
             profit: summary.profit
         ).hint
     }
@@ -56,17 +55,17 @@ enum DashboardDisplayTax {
         summary: DashboardSummary,
         branch: BranchCompany
     ) -> (Double, String)? {
-        let revBase = effectiveRevenueForTax(summary)
+        let receiptsBase = taxBaseFromAllReceipts(summary)
         if let rate = branch.taxRate, rate >= 0 {
             let base = (branch.taxCalculationBase ?? "revenue").lowercased()
             let raw: Double
             if base == "profit" {
                 raw = max(0, summary.profit) * rate
             } else {
-                raw = revBase * rate
+                raw = receiptsBase * rate
             }
             let amount = roundMoney(raw)
-            let baseRu = base == "profit" ? "денежного остатка" : "продаж"
+            let baseRu = base == "profit" ? "денежного остатка" : "поступлений"
             let pct = Int(round(branch.taxRatePercent ?? rate * 100))
             let label = branch.taxModeLabel
             if !label.isEmpty {
@@ -75,11 +74,11 @@ enum DashboardDisplayTax {
             return (amount, "За выбранный период: \(pct)% с \(baseRu)")
         }
         if let rc = branch.taxRegimeCode, !rc.trimmingCharacters(in: .whitespaces).isEmpty {
-            let pair = amountForRegimeCode(rc, revenue: revBase, profit: summary.profit)
+            let pair = amountForRegimeCode(rc, revenue: receiptsBase, profit: summary.profit)
             return (pair.amount, "За период (из компании). " + pair.hint)
         }
         if !branch.taxMode.isEmpty {
-            let pair = amountForRegimeCode(branch.taxMode, revenue: revBase, profit: summary.profit)
+            let pair = amountForRegimeCode(branch.taxMode, revenue: receiptsBase, profit: summary.profit)
             let name = branch.taxModeLabel
             if !name.isEmpty {
                 return (pair.amount, "За период: \(name). " + pair.hint)
@@ -99,9 +98,9 @@ enum DashboardDisplayTax {
         let p = profit
         switch c {
         case "PATENT", "IP_SNR_PATENT":
-            return (roundMoney(r * 0.01), "≈ 1% от продаж (оценка)")
+            return (roundMoney(r * 0.01), "≈ 1% от поступлений (оценка)")
         case "USN", "IP_USN_DECLARATION":
-            return (roundMoney(r * 0.03), "≈ 3% от продаж (УСН, оценка)")
+            return (roundMoney(r * 0.03), "≈ 3% от поступлений (УСН, оценка)")
         case "OUR":
             return (roundMoney(max(0, p) * 0.10), "≈ 10% от денежного остатка (оценка)")
         case "TOO_CIT_GENERAL":
@@ -109,11 +108,11 @@ enum DashboardDisplayTax {
         case "MIXED_PERIOD":
             return (roundMoney(r * 0.03), "Смешанный период: нужен ответ дашборда с разбивкой по режимам")
         case "CUSTOM":
-            return (roundMoney(r * 0.03), "Свой режим без ставки в ответе — ориентир 3% с продаж")
+            return (roundMoney(r * 0.03), "Свой режим без ставки в ответе — ориентир 3% с поступлений")
         case "":
-            return (roundMoney(r * 0.03), "≈ 3% от продаж (оценка)")
+            return (roundMoney(r * 0.03), "≈ 3% от поступлений (оценка)")
         default:
-            return (roundMoney(r * 0.03), "≈ 3% от продаж (оценка)")
+            return (roundMoney(r * 0.03), "≈ 3% от поступлений (оценка)")
         }
     }
 

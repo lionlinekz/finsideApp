@@ -1,7 +1,8 @@
 import SwiftUI
 
 enum HomeLedgerRoute: Hashable {
-    case allIncome(title: String)
+    /// Все операции категории SALES за период (как строка «Продажи» на главной).
+    case allSales(title: String)
     case incomeByMethod(methodLabel: String)
     case incomeByBank(bankName: String)
     case incomeCashPersonal
@@ -9,7 +10,9 @@ enum HomeLedgerRoute: Hashable {
     case salesByManager(profileId: Int, title: String)
     case salesByPoint(pointId: Int, title: String)
     case expenseCategory(categoryId: Int, title: String)
-    /// `isPersonal == true` — с своих счетов; `false` — со счетов ИП.
+    /// Строка блока «Оплаты расходов» (счёт, Kaspi 7772, наличные и т.д.).
+    case expenseByAccountRow(DashboardExpenseAccountRow)
+    /// Запасной вариант, если дашборд без `expense_by_account`: все ИП / все личные.
     case expenseByAccountSource(isPersonal: Bool)
 }
 
@@ -57,7 +60,7 @@ struct LedgerListView: View {
 
     private var title: String {
         switch route {
-        case .allIncome(let t): return t
+        case .allSales(let t): return t
         case .incomeByMethod(let label): return label
         case .incomeByBank(let bank): return bank
         case .incomeCashPersonal: return "Наличные · личные"
@@ -65,6 +68,7 @@ struct LedgerListView: View {
         case .salesByManager(_, let t): return t
         case .salesByPoint(_, let t): return t
         case .expenseCategory(_, let t): return t
+        case .expenseByAccountRow(let row): return row.label
         case .expenseByAccountSource(let isPersonal):
             return isPersonal ? "С своих счетов" : "Со счетов ИП"
         }
@@ -116,10 +120,12 @@ struct LedgerListView: View {
         do {
             let page: LedgerLinesResponse
             switch route {
-            case .allIncome:
-                page = try await APIService.shared.dashboardIncomeLines(
+            case .allSales:
+                page = try await APIService.shared.dashboardSalesLines(
                     period: period,
                     date: date,
+                    profileId: nil,
+                    pointId: nil,
                     offset: offset,
                     limit: 50
                 )
@@ -190,12 +196,27 @@ struct LedgerListView: View {
                     offset: offset,
                     limit: 50
                 )
+            case .expenseByAccountRow(let row):
+                page = try await APIService.shared.dashboardExpenseLines(
+                    period: period,
+                    date: date,
+                    categoryId: nil,
+                    personalMoney: row.isPersonal,
+                    bankStatementUploadId: row.bankStatementUploadId,
+                    paymentBank: row.paymentBankFilter,
+                    cashOnly: row.cashOnly,
+                    offset: offset,
+                    limit: 50
+                )
             case .expenseByAccountSource(let isPersonal):
                 page = try await APIService.shared.dashboardExpenseLines(
                     period: period,
                     date: date,
                     categoryId: nil,
                     personalMoney: isPersonal,
+                    bankStatementUploadId: nil,
+                    paymentBank: nil,
+                    cashOnly: false,
                     offset: offset,
                     limit: 50
                 )

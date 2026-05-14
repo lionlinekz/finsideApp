@@ -27,12 +27,14 @@ private func ruMonthYearLabel(for date: Date) -> String {
 }
 
 private extension Color {
-    static let fIncome = Color(red: 0.13, green: 0.78, blue: 0.56)
-    static let fExpense = Color(red: 0.94, green: 0.30, blue: 0.30)
-    static let fRevenue = Color(red: 0.10, green: 0.40, blue: 0.28)
-    static let fTransfer = Color(red: 0.55, green: 0.55, blue: 0.58)
-    static let fTaxEstimate = Color(red: 0.85, green: 0.55, blue: 0.20)
-    static let fProfit = Color(red: 1.0, green: 0.80, blue: 0.0)
+    static let fIncome = DashboardPalette.income
+    static let fExpense = DashboardPalette.expense
+    static let fRevenue = DashboardPalette.revenue
+    static let fTransfer = DashboardPalette.transfer
+    /// Налог и оценки налога — терракота (`DashboardPalette.tax`).
+    static let fTaxEstimate = DashboardPalette.tax
+    static let fProfit = DashboardPalette.receipts
+    static let fSalesBlue = DashboardPalette.sales
 }
 
 private func brandColor(for name: String) -> Color {
@@ -66,13 +68,6 @@ private func brandColor(for name: String) -> Color {
     default:
         return Color(red: 0.45, green: 0.48, blue: 0.52)
     }
-}
-
-/// Раскрытая детализация в блоке «Источники доходов» (банки / наличные личн.–бизнес).
-private enum PaymentSourcesExpansion: Equatable {
-    case none
-    case bankBreakdown
-    case cashSplit
 }
 
 private enum HomeDetailSheet: Identifiable {
@@ -114,7 +109,6 @@ struct HomeView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var appeared = false
-    @State private var paymentSourcesExpansion: PaymentSourcesExpansion = .none
     @State private var detailSheet: HomeDetailSheet?
     @State private var ledgerPath = NavigationPath()
     /// Горизонтальный свайп для смены периода: −1…1 (блик + «резина» контента).
@@ -185,7 +179,7 @@ struct HomeView: View {
             .sheet(item: $detailSheet) { sheet in
                 switch sheet {
                 case .heroLegend(let s, let periodType):
-                    HeroRingsLegendSheet(summary: s, primaryBranch: primaryBranch, periodType: periodType)
+                    HeroRingsLegendSheet(summary: s, periodType: periodType)
                         .presentationDetents([.medium, .large])
                 case .incomeDetail(let s, let c):
                     MetricComparisonSheet(
@@ -330,12 +324,13 @@ struct HomeView: View {
             if !d.points.isEmpty {
                 sectionBlock("Точки продаж") { pointsSection(d.points, revenue: d.summary.revenue) }
             }
-            if !d.incomeByMethod.isEmpty || !d.incomeByBank.isEmpty {
-                sectionBlock("Источники доходов") { paymentSourcesSection(d) }
-            }
-            let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
-            if expenseAccountSplitTotal > 0 {
-                sectionBlock("Оплаты расходов") { expenseAccountSourceSection(d) }
+            if let expenseAccounts = d.expenseByAccount, !expenseAccounts.isEmpty {
+                sectionBlock("Оплаты расходов") { expenseByAccountSection(expenseAccounts) }
+            } else {
+                let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
+                if expenseAccountSplitTotal > 0 {
+                    sectionBlock("Оплаты расходов") { expenseAccountSourceSection(d) }
+                }
             }
             if !d.expensesByCategory.isEmpty {
                 sectionBlock("Топ расходов") { expensesCategorySection(d.expensesByCategory, revenue: d.summary.revenue) }
@@ -380,7 +375,7 @@ struct HomeView: View {
                         DashboardHaptics.lightImpact()
                         detailSheet = .heroLegend(s, periodType)
                     } label: {
-                        ringsView(s, taxAmount: taxDisplay.amount, targets: ringTargets)
+                        ringsView(s, targets: ringTargets)
                             .frame(width: 120, height: 120)
                     }
                     .buttonStyle(.dashboardPressable)
@@ -432,13 +427,17 @@ struct HomeView: View {
                         Divider().frame(width: 100)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Поступления")
+                            Text("Все поступления в том числе продажи")
                                 .font(.caption.weight(.semibold))
                                 .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.leading)
                             Text(fmtShort(s.totalIncome))
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.fProfit)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
                     Spacer()
                 }
                 .padding(16)
@@ -453,15 +452,15 @@ struct HomeView: View {
             // Metric row
             HStack(alignment: .top, spacing: 10) {
                 MetricRow(
-                    label: "Доход",
+                    label: "Продажи",
                     value: s.revenue,
-                    tint: .fIncome,
+                    tint: .fSalesBlue,
                     delta: deltaPct(s.revenue, prev.prevRevenue),
                     lightOnDark: true,
-                    amountColor: .fIncome,
+                    amountColor: .fSalesBlue,
                     onTap: {
                         DashboardHaptics.lightImpact()
-                        ledgerPath.append(HomeLedgerRoute.allIncome(title: "Доходы"))
+                        ledgerPath.append(HomeLedgerRoute.allSales(title: "Продажи"))
                     }
                 )
                 MetricRow(
@@ -497,24 +496,25 @@ struct HomeView: View {
         .animation(.easeInOut(duration: 0.22), value: showBankAccountsExpanded.wrappedValue)
     }
 
-    private func ringsView(_ s: DashboardSummary, taxAmount: Double, targets: RingTargets?) -> some View {
+    private func ringsView(_ s: DashboardSummary, targets: RingTargets?) -> some View {
         let inc = s.totalIncome
         let exp = s.totalExpense
-        let tax = max(0, taxAmount)
-        let fallbackNorm = max(inc, exp, tax, 1)
+        let profit = s.profit
+        let fallbackNorm = max(inc, exp, abs(profit), 1)
 
         let incomeRatio = ringFillRatio(actual: inc, target: targets?.income, fallbackDenominator: fallbackNorm)
         let expenseRatio = ringFillRatio(actual: exp, target: targets?.expense, fallbackDenominator: fallbackNorm)
-        let taxRatio = ringFillRatio(actual: tax, target: targets?.tax, fallbackDenominator: fallbackNorm)
+        let profitTarget = targets.map { $0.income - $0.expense }
+        let profitRatio = ringFillRatio(actual: profit, target: profitTarget, fallbackDenominator: fallbackNorm)
 
         return ZStack {
-            ring(ratio: incomeRatio, color: .fIncome, width: 10, size: 110)
+            ring(ratio: incomeRatio, color: .fProfit, width: 10, size: 110)
             ring(ratio: expenseRatio, color: .fExpense, width: 10, size: 84)
-            ring(ratio: taxRatio, color: .fTaxEstimate, width: 10, size: 58)
+            ring(ratio: profitRatio, color: .fIncome, width: 10, size: 58)
         }
     }
 
-    /// Полный круг = цель из API; если цели нет — как раньше, от max(доход, расход, налог).
+    /// Полный круг = цель из API; если цели нет — доля от fallbackDenominator (макс. из фактических величин).
     private func ringFillRatio(actual: Double, target: Double?, fallbackDenominator: Double) -> Double {
         if let t = target, t > 1e-9 {
             return min(max(actual / t, 0), 1)
@@ -726,9 +726,12 @@ struct HomeView: View {
 
     private func bankAccountRow(_ acc: DashboardBankAccount, accent: Color) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            Circle()
-                .fill(accent.opacity(0.2))
-                .frame(width: 10, height: 10)
+            BankLogoMark(
+                bankName: acc.bankName,
+                fallbackSystemName: "building.columns.fill",
+                fallbackTint: accent,
+                size: 26
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -832,256 +835,64 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Income sources (by method / bank)
+    // MARK: - Expense by bank account (оплаты расходов по счетам)
 
-    private func paymentSourcesSection(_ d: DashboardResponse) -> some View {
-        let methods = d.incomeByMethod
-        let banks = d.incomeByBank
-        let cashPersonal = d.cashIncomePersonal ?? 0
-        let cashBusiness = d.cashIncomeBusiness ?? 0
-        return Group {
-            if !methods.isEmpty {
-                paymentMethodsCard(
-                    methods,
-                    banks: banks,
-                    cashPersonal: cashPersonal,
-                    cashBusiness: cashBusiness
-                )
-            } else if !banks.isEmpty {
-                // Нет строк способов — показываем банки как раньше (редкий случай)
-                bankCardStandalone(banks)
+    private func expenseByAccountSection(_ rows: [DashboardExpenseAccountRow]) -> some View {
+        let total = rows.map(\.amount).reduce(0, +)
+        let maxAmount = max(rows.map(\.amount).max() ?? 1, 1)
+        return FitnessCard {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
+                NavigationLink(value: HomeLedgerRoute.expenseByAccountRow(row)) {
+                    expenseByAccountRowContent(row: row, maxAmount: maxAmount, ofTotal: total)
+                }
+                .buttonStyle(.dashboardPressable)
+                if idx < rows.count - 1 {
+                    Divider().padding(.leading, 12)
+                }
             }
         }
     }
 
-    /// Тап по «Безнал» раскрывает разбивку по банкам; по «Наличные» — личные / бизнес.
-    private func paymentMethodTapKind(_ method: String) -> PaymentSourcesExpansion? {
-        let m = method.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if m == "наличные" || m.hasPrefix("наличн") { return .cashSplit }
-        if m == "безнал" { return .bankBreakdown }
-        return nil
-    }
-
-    private func togglePaymentSourceExpansion(for method: String) {
-        guard let kind = paymentMethodTapKind(method) else {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                paymentSourcesExpansion = .none
-            }
-            return
-        }
-        DashboardHaptics.lightImpact()
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            paymentSourcesExpansion = paymentSourcesExpansion == kind ? .none : kind
-        }
-    }
-
-    private func paymentMethodsCard(
-        _ methods: [MethodAmount],
-        banks: [BankAmount],
-        cashPersonal: Double,
-        cashBusiness: Double
+    private func expenseByAccountRowContent(
+        row: DashboardExpenseAccountRow,
+        maxAmount: Double,
+        ofTotal: Double
     ) -> some View {
-        let total = methods.map(\.amount).reduce(0, +)
-        let bankTotal = banks.map(\.amount).reduce(0, +)
-        let maxBankAmount = banks.first?.amount ?? 1
-        let cashSplitTotal = cashPersonal + cashBusiness
-        return FitnessCard {
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    ForEach(methods) { item in
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(brandColor(for: item.method))
-                            .frame(width: total > 0 ? max(6, geo.size.width * CGFloat(item.amount / total)) : 0)
-                    }
-                }
+        let barColor = brandColor(for: row.bank)
+        let fallbackIcon = row.cashOnly
+            ? "banknote"
+            : (row.isPersonal ? "person.fill" : "building.columns.fill")
+        return VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                BankLogoMark(
+                    bankName: row.bank,
+                    fallbackSystemName: fallbackIcon,
+                    fallbackTint: barColor,
+                    size: 24
+                )
+                Text(row.label)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                Text(fmt(row.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
+                Text(pct(row.amount, of: ofTotal))
+                    .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
+                    .frame(width: 30, alignment: .trailing)
             }
-            .frame(height: 8)
-            .clipShape(.rect(cornerRadius: 4))
-            .padding(.bottom, 10)
-
-            ForEach(Array(methods.enumerated()), id: \.element.id) { idx, item in
-                let expandable = paymentMethodTapKind(item.method) != nil
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 0) {
-                        NavigationLink(value: HomeLedgerRoute.incomeByMethod(methodLabel: item.method)) {
-                            HStack(spacing: 8) {
-                                Circle().fill(brandColor(for: item.method)).frame(width: 8, height: 8)
-                                Text(item.method).font(.subheadline)
-                                Spacer(minLength: 8)
-                                Image(systemName: "chevron.right")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                                Text(fmt(item.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                                Text(pct(item.amount, of: total))
-                                    .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                                    .frame(width: 30, alignment: .trailing)
-                            }
-                            .padding(.vertical, 4)
-                            .contentShape(.rect)
-                        }
-                        .buttonStyle(.dashboardPressable)
-
-                        if expandable {
-                            Button {
-                                togglePaymentSourceExpansion(for: item.method)
-                            } label: {
-                                Image(systemName: chevronForPaymentExpansion(item.method))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .frame(width: 36, height: 44)
-                                    .contentShape(.rect)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-
-                    if paymentSourcesExpansion == .bankBreakdown,
-                       paymentMethodTapKind(item.method) == .bankBreakdown,
-                       !banks.isEmpty {
-                        incomeBankBreakdownBody(
-                            banks: banks,
-                            maxAmount: maxBankAmount,
-                            ofTotal: bankTotal
-                        )
-                        .padding(.top, 6)
-                        .padding(.bottom, 8)
-                    }
-
-                    if paymentSourcesExpansion == .cashSplit,
-                       paymentMethodTapKind(item.method) == .cashSplit {
-                        cashIncomeSplitBody(
-                            personal: cashPersonal,
-                            business: cashBusiness,
-                            ofTotal: cashSplitTotal
-                        )
-                        .padding(.top, 6)
-                        .padding(.bottom, 8)
-                    }
-                }
-                if idx < methods.count - 1 { Divider().padding(.leading, 16) }
-            }
-        }
-    }
-
-    private func chevronForPaymentExpansion(_ method: String) -> String {
-        guard let kind = paymentMethodTapKind(method) else { return "chevron.down" }
-        return paymentSourcesExpansion == kind ? "chevron.up" : "chevron.down"
-    }
-
-    private func incomeBankBreakdownBody(banks: [BankAmount], maxAmount: Double, ofTotal: Double) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("По банкам")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 16)
-                .padding(.bottom, 6)
-            ForEach(Array(banks.enumerated()), id: \.element.id) { idx, item in
-                let color = brandColor(for: item.bank)
-                NavigationLink(value: HomeLedgerRoute.incomeByBank(bankName: item.bank)) {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3, height: 22)
-                            Text(item.bank).font(.subheadline.weight(.medium))
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                            Text(fmt(item.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                            Text(pct(item.amount, of: ofTotal))
-                                .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                                .frame(width: 30, alignment: .trailing)
-                        }
-                        ProgressBarView(ratio: item.amount / maxAmount, color: color)
-                    }
-                    .padding(.vertical, 4)
-                    .padding(.leading, 8)
-                }
-                .buttonStyle(.dashboardPressable)
-                if idx < banks.count - 1 { Divider().padding(.leading, 24) }
-            }
-        }
-    }
-
-    private func cashIncomeSplitBody(personal: Double, business: Double, ofTotal: Double) -> some View {
-        let denom = ofTotal > 0 ? ofTotal : 1.0
-        return VStack(alignment: .leading, spacing: 8) {
-            VStack(spacing: 6) {
-                NavigationLink(value: HomeLedgerRoute.incomeCashPersonal) {
-                    HStack(spacing: 8) {
-                        Circle().fill(Color.orange.opacity(0.75)).frame(width: 8, height: 8)
-                        Text("Личные")
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                        Text(fmt(personal))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                        Text(pct(personal, of: denom))
-                            .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                            .frame(width: 30, alignment: .trailing)
-                    }
-                }
-                .buttonStyle(.dashboardPressable)
-                NavigationLink(value: HomeLedgerRoute.incomeCashBusiness) {
-                    HStack(spacing: 8) {
-                        Circle().fill(Color.fRevenue.opacity(0.9)).frame(width: 8, height: 8)
-                        Text("Бизнес")
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.tertiary)
-                        Text(fmt(business))
-                            .font(.subheadline.monospacedDigit().weight(.semibold))
-                        Text(pct(business, of: denom))
-                            .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                            .frame(width: 30, alignment: .trailing)
-                    }
-                }
-                .buttonStyle(.dashboardPressable)
-            }
-            .padding(.leading, 8)
-            Text("Без компании — личные; с компанией — бизнес")
+            ProgressBarView(ratio: row.amount / maxAmount, color: barColor)
+            Text("доля от оплат расходов \(pct(row.amount, of: ofTotal))")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .padding(.leading, 16)
-                .padding(.top, 2)
+                .foregroundStyle(.quaternary)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, 6)
     }
 
-    private func bankCardStandalone(_ banks: [BankAmount]) -> some View {
-        let maxAmount = banks.first?.amount ?? 1
-        let total = banks.map(\.amount).reduce(0, +)
-        return FitnessCard {
-            ForEach(banks) { item in
-                let color = brandColor(for: item.bank)
-                NavigationLink(value: HomeLedgerRoute.incomeByBank(bankName: item.bank)) {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 8) {
-                            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 3, height: 22)
-                            Text(item.bank).font(.subheadline.weight(.medium))
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                            Text(fmt(item.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                            Text(pct(item.amount, of: total))
-                                .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                                .frame(width: 30, alignment: .trailing)
-                        }
-                        ProgressBarView(ratio: item.amount / maxAmount, color: color)
-                    }
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.dashboardPressable)
-            }
-        }
-    }
-
-    // MARK: - Expense account source (ИП vs личные)
+    // MARK: - Expense account source (ИП vs личные) — запасной вариант без `expense_by_account`
 
     private func expenseAccountSourceSection(_ d: DashboardResponse) -> some View {
         let ip = d.expenseFromIpAccounts ?? 0
@@ -1459,7 +1270,6 @@ struct HomeView: View {
     private func loadData() { Task { await loadDataAsync() } }
 
     private func loadDataAsync() async {
-        paymentSourcesExpansion = .none
         ledgerPath = NavigationPath()
         isLoading = true
         errorMessage = nil
@@ -1531,7 +1341,7 @@ private struct MetricRow: View {
     var delta: Double?
     var subtitle: String? = nil
     var showApproximateBadge: Bool = false
-    /// Белый текст на тёмном фоне (колонки «Доход» / «Расход» на главной).
+    /// Белый текст на тёмном фоне (колонки «Продажи» / «Расход» на главной).
     var lightOnDark: Bool = false
     /// Цвет крупной суммы; если `nil` — как `valueColor`.
     var amountColor: Color? = nil

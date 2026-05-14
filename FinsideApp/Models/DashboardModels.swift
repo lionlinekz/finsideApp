@@ -19,6 +19,8 @@ struct DashboardResponse: Decodable {
     let expenseFromIpAccounts: Double?
     /// Расходы с личных счетов (`is_personal_money == true`).
     let expenseFromOwnAccounts: Double?
+    /// Разбивка оплат расходов по счёту (банк + хвост IBAN из выписки и т.д.).
+    let expenseByAccount: [DashboardExpenseAccountRow]?
     let expensesByCategory: [CategoryAmount]
     let chart: [ChartPoint]
     /// Счета и остатки из последних выписок (см. `closing_balance` на загрузке).
@@ -34,8 +36,36 @@ struct DashboardResponse: Decodable {
         case cashIncomeBusiness = "cash_income_business"
         case expenseFromIpAccounts = "expense_from_ip_accounts"
         case expenseFromOwnAccounts = "expense_from_own_accounts"
+        case expenseByAccount = "expense_by_account"
         case expensesByCategory = "expenses_by_category"
         case bankAccounts = "bank_accounts"
+    }
+}
+
+/// Строка блока «Оплаты расходов» на дашборде + параметры drill-down в ledger API.
+struct DashboardExpenseAccountRow: Decodable, Identifiable, Hashable {
+    let label: String
+    let bank: String
+    let accountSuffix: String?
+    let isPersonal: Bool
+    let amount: Double
+    let bankStatementUploadId: Int?
+    let paymentBankFilter: String?
+    let cashOnly: Bool
+
+    var id: String {
+        let u = bankStatementUploadId.map(String.init) ?? "-"
+        let pb = paymentBankFilter ?? ""
+        return "\(u)|\(pb)|\(cashOnly)|\(isPersonal)|\(label)"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case label, bank, amount
+        case accountSuffix = "account_suffix"
+        case isPersonal = "is_personal"
+        case bankStatementUploadId = "bank_statement_upload_id"
+        case paymentBankFilter = "payment_bank_filter"
+        case cashOnly = "cash_only"
     }
 }
 

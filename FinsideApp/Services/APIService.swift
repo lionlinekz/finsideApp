@@ -232,6 +232,9 @@ final class APIService {
         date: String?,
         categoryId: Int? = nil,
         personalMoney: Bool? = nil,
+        bankStatementUploadId: Int? = nil,
+        paymentBank: String? = nil,
+        cashOnly: Bool = false,
         offset: Int = 0,
         limit: Int = 50
     ) async throws -> LedgerLinesResponse {
@@ -240,6 +243,9 @@ final class APIService {
         if let date { path += "&date=\(date)" }
         if let categoryId { path += "&category_id=\(categoryId)" }
         if let personalMoney { path += "&personal_money=\(personalMoney ? "true" : "false")" }
+        if let bankStatementUploadId { path += "&bank_statement_upload_id=\(bankStatementUploadId)" }
+        if let paymentBank, !paymentBank.isEmpty { path += "&payment_bank=\(paymentBank.forURLQuery)" }
+        if cashOnly { path += "&cash_only=true" }
         let data = try await get(path: path)
         if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
            !errResp.error.isEmpty {

@@ -12,6 +12,68 @@ enum DashboardHaptics {
     }
 }
 
+/// Акценты главного дашборда: спокойная насыщенность, общая палитра без «радуги».
+enum DashboardPalette {
+    /// Поступления — тёплый янтарь (не чистый жёлтый).
+    static let receipts = Color(red: 0.96, green: 0.73, blue: 0.24)
+    /// Расход — красный в духе SF, чуть приглушённый.
+    static let expense = Color(red: 0.94, green: 0.28, blue: 0.32)
+    /// Остаток и положительный поток — мятный зелёный (не неон).
+    static let income = Color(red: 0.21, green: 0.71, blue: 0.54)
+    /// Продажи — спокойный синий (рядом с SF Blue, без «электрического» cyan).
+    static let sales = Color(red: 0.26, green: 0.55, blue: 0.93)
+    /// Налог — приглушённая терракота (отдельно от красного расхода).
+    static let tax = Color(red: 0.74, green: 0.44, blue: 0.36)
+    /// Точки и тёмные акценты выручки.
+    static let revenue = Color(red: 0.12, green: 0.48, blue: 0.38)
+    static let transfer = Color(red: 0.55, green: 0.55, blue: 0.58)
+}
+
+// Логотипы `BankLogoKaspi` / `BankLogoHalyk` в Assets (из TrackApp).
+enum BankBrandAsset {
+    /// Имя картинки в каталоге ассетов или `nil`, если использовать SF Symbol.
+    static func catalogImageName(for bankName: String) -> String? {
+        let s = bankName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s.contains("kaspi") { return "BankLogoKaspi" }
+        if s.contains("halyk") || s.contains("халык") { return "BankLogoHalyk" }
+        return nil
+    }
+}
+
+/// Марка банка: логотип из ассетов (Kaspi / Halyk) или запасной SF Symbol.
+struct BankLogoMark: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let bankName: String
+    var fallbackSystemName: String = "building.columns.fill"
+    var fallbackTint: Color = .secondary
+    var size: CGFloat = 24
+
+    /// Монохромные PNG — в тёмной теме белые, в светлой — тёмные (читаемость на карточке).
+    private var catalogTemplateColor: Color {
+        colorScheme == .dark ? .white : Color(red: 0.14, green: 0.14, blue: 0.16)
+    }
+
+    var body: some View {
+        Group {
+            if let asset = BankBrandAsset.catalogImageName(for: bankName) {
+                Image(asset)
+                    .resizable()
+                    .renderingMode(.template)
+                    .scaledToFit()
+                    .frame(width: size, height: size)
+                    .foregroundStyle(catalogTemplateColor)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: fallbackSystemName)
+                    .font(.system(size: max(11, size * 0.46), weight: .semibold))
+                    .foregroundStyle(fallbackTint)
+                    .frame(width: size, height: size)
+            }
+        }
+    }
+}
+
 enum DashboardMoney {
     static func formatTenge(_ v: Double) -> String {
         let f = NumberFormatter()

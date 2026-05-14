@@ -2,21 +2,15 @@ import SwiftUI
 
 struct HeroRingsLegendSheet: View {
     let summary: DashboardSummary
-    /// Как на главной — для согласованной оценки налога во внутреннем кольце.
-    var primaryBranch: BranchCompany? = nil
     /// `period.type` из дашборда: today / custom / month_to_date / calendar_month.
     var periodType: String = ""
     @Environment(\.dismiss) private var dismiss
 
-    private var taxLine: (amount: Double, hint: String) {
-        DashboardDisplayTax.compute(summary: summary, primaryBranch: primaryBranch)
-    }
-
     private var ringsFooterText: String {
         if periodType == "today" || periodType == "custom" {
-            return "Кольца: полный круг — средний дневной ориентир за текущий месяц до выбранного дня (сумма с 1-го числа, делённая на число дня) отдельно по доходу, расходу и оценке налога. Заполнение — факт выбранного периода к этой цели."
+            return "Кольца: полный круг — средний дневной ориентир за текущий месяц до выбранного дня (сумма с 1-го числа, делённая на число дня) отдельно по поступлениям, расходу и денежному остатку. Заполнение — факт выбранного периода к этой цели."
         }
-        return "Кольца: полный круг — факт предыдущего полного календарного месяца по доходу, расходу и оценке налога. Заполнение — за текущий выбранный период относительно этой цели."
+        return "Кольца: полный круг — факт предыдущего полного календарного месяца по поступлениям, расходу и денежному остатку. Заполнение — за текущий выбранный период относительно этой цели."
     }
 
     var body: some View {
@@ -24,22 +18,22 @@ struct HeroRingsLegendSheet: View {
             List {
                 Section {
                     legendRow(
-                        color: Color(red: 0.13, green: 0.78, blue: 0.56),
-                        title: "Доход",
+                        color: DashboardPalette.receipts,
+                        title: "Поступления",
                         value: DashboardMoney.formatTenge(summary.totalIncome),
                         subtitle: "Все поступления за период"
                     )
                     legendRow(
-                        color: Color(red: 0.94, green: 0.30, blue: 0.30),
+                        color: DashboardPalette.expense,
                         title: "Расход",
                         value: DashboardMoney.formatTenge(summary.totalExpense),
                         subtitle: "Расходы за период"
                     )
                     legendRow(
-                        color: Color(red: 0.85, green: 0.55, blue: 0.20),
-                        title: "Налог (оценка)",
-                        value: DashboardMoney.formatTenge(taxLine.amount),
-                        subtitle: taxLine.hint
+                        color: DashboardPalette.income,
+                        title: "Денежный остаток",
+                        value: DashboardMoney.formatTenge(summary.profit),
+                        subtitle: "Поступления минус расходы за период"
                     )
                 } header: {
                     Text("Кольца")
