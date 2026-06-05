@@ -1,5 +1,12 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
+
+private enum ShareExtensionDefaults {
+    static let suite = "group.kz.finside.app"
+    /// Должно совпадать с `ShareImportPendingNavigation.userDefaultsKey` в основном приложении.
+    static let pendingConversationKey = "pending_share_open_conversation_id"
+}
 
 @objc(ShareViewController)
 class ShareViewController: UIViewController {
@@ -10,10 +17,7 @@ class ShareViewController: UIViewController {
 
         let shareView = ShareView(
             extensionContext: extensionContext,
-            onComplete: { [weak self] conversationId in
-                self?.openMainApp(conversationId: conversationId)
-            },
-            onCancel: { [weak self] in
+            onDismissExtension: { [weak self] in
                 self?.extensionContext?.completeRequest(returningItems: nil)
             }
         )
@@ -30,18 +34,6 @@ class ShareViewController: UIViewController {
             hosting.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         hosting.didMove(toParent: self)
-    }
-
-    /// Открывает основное приложение через NSExtensionContext (UIApplication из extension недоступен).
-    private func openMainApp(conversationId: Int?) {
-        guard let id = conversationId,
-              let url = URL(string: "finside://chat/\(id)") else {
-            extensionContext?.completeRequest(returningItems: nil)
-            return
-        }
-        extensionContext?.open(url) { [weak self] _ in
-            self?.extensionContext?.completeRequest(returningItems: nil)
-        }
     }
 }
 
@@ -65,8 +57,7 @@ struct ShareView: View {
     private static let sharedAccessTokenKey = "shared_access_token"
 
     let extensionContext: NSExtensionContext?
-    let onComplete: (Int?) -> Void
-    let onCancel: () -> Void
+    let onDismissExtension: () -> Void
 
     @State private var status: ShareStatus = .loading
     @State private var fileName = ""
@@ -78,6 +69,11 @@ struct ShareView: View {
     @State private var ibanField = ""
     @State private var isAddingAccount = false
     @State private var addAccountError: String?
+
+    private var toolbarDismissTitle: String {
+        if case .success = status { return "Закрыть" }
+        return "Отмена"
+    }
 
     var body: some View {
         NavigationStack {
@@ -100,7 +96,7 @@ struct ShareView: View {
                     }
 
                 case .success:
-                    VStack(spacing: 12) {
+                    VStack(spacing: 16) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 56))
                             .foregroundStyle(.green)
@@ -110,9 +106,12 @@ struct ShareView: View {
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
-                        Text("Открываем канал со счётом…")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                        Text(
+                            "Когда появится уведомление «Выписка в Finside» — нажмите его, чтобы открыть чат. Если уведомлений нет, проверьте настройки и откройте Finside с домашнего экрана: чат подтянется по последнему импорту."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                     }
 
                 case .error(let message):
@@ -151,7 +150,7 @@ struct ShareView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { onCancel() }
+                    Button(toolbarDismissTitle) { onDismissExtension() }
                 }
             }
         }
@@ -327,16 +326,24 @@ struct ShareView: View {
 
     private func handleImportSuccess(_ result: ShareImportResponse) {
         let total = result.summary.incomeCount + result.summary.expenseCount + result.summary.transferCount
-        resultText =
-            "Новых операций: \(total) (доходов \(result.summary.incomeCount), расходов \(result.summary.expenseCount), переводов \(result.summary.transferCount))."
-        status = .success
-
-        Task {
-            try? await Task.sleep(nanoseconds: 800_000_000)
-            await MainActor.run {
-                onComplete(result.conversationId)
-            }
+        let noNewOps =
+            result.emptyImport == true
+            || result.summary.emptyImport == true
+            || total == 0
+        if noNewOps {
+            resultText = "Новых операций нет — строки из выписки уже были в приложении."
+        } else {
+            resultText =
+                "Новых операций: \(total) (доходов \(result.summary.incomeCount), расходов \(result.summary.expenseCount), переводов \(result.summary.transferCount))."
         }
+        if result.conversationId > 0 {
+            UserDefaults(suiteName: ShareExtensionDefaults.suite)?.set(
+                result.conversationId,
+                forKey: ShareExtensionDefaults.pendingConversationKey
+            )
+        }
+        ShareExtensionLocalNotifier.scheduleOpenAppReminder(conversationId: result.conversationId > 0 ? result.conversationId : nil)
+        status = .success
     }
 
     /// Поддержка .txt из «Файлы», банковских приложений (file-url, plain text).
@@ -528,11 +535,13 @@ struct ShareImportResponse: Codable {
     let conversationId: Int
     let messageId: Int
     let summary: ShareImportSummary
+    let emptyImport: Bool?
 
     enum CodingKeys: String, CodingKey {
         case conversationId = "conversation_id"
         case messageId = "message_id"
         case summary
+        case emptyImport = "empty_import"
     }
 }
 
@@ -550,10 +559,12 @@ struct ShareImportSummary: Codable {
     let incomeCount: Int
     let expenseCount: Int
     let transferCount: Int
+    let emptyImport: Bool?
 
     enum CodingKeys: String, CodingKey {
         case incomeCount = "income_count"
         case expenseCount = "expense_count"
         case transferCount = "transfer_count"
+        case emptyImport = "empty_import"
     }
 }

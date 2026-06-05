@@ -29,7 +29,7 @@ struct MainTabView: View {
 
             TasksView()
                 .tabItem {
-                    Label("Задачи", systemImage: "checklist")
+                    Label("Заметки", systemImage: "note.text")
                 }
                 .tag(AppTab.tasks)
 
@@ -48,6 +48,12 @@ struct MainTabView: View {
         .task {
             KeychainService.syncAccessTokenToAppGroupIfNeeded()
             chatService.start()
+        }
+        .onAppear {
+            if chatService.pendingOpenChatsTab {
+                selectedTab = .chats
+                chatService.pendingOpenChatsTab = false
+            }
         }
         .onChange(of: chatService.pendingNavigationConversationId) { _, newId in
             if newId != nil {

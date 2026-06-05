@@ -70,14 +70,14 @@ struct TasksView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                     }
-                    .accessibilityHint("Завершённые задачи из прошлого")
+                    .accessibilityHint("Завершённые заметки из прошлого")
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 10, trailing: 0))
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Задачи")
+            .navigationTitle("Заметки")
             .toolbar {
                 #if os(iOS) || os(visionOS)
                 ToolbarItem(placement: .topBarTrailing) {
@@ -96,13 +96,13 @@ struct TasksView: View {
                             .font(.system(size: 20, weight: .light))
                             .symbolRenderingMode(.hierarchical)
                     }
-                    .accessibilityLabel("Новая задача")
+                    .accessibilityLabel("Новая заметка")
                 }
             }
             .sheet(isPresented: $showAdd) {
-                AddTaskSheet(onSave: { title, deadline, priority in
+                AddNoteSheet { title, deadline, priority in
                     appState.addUserTask(title: title, deadline: deadline, priority: priority)
-                })
+                }
             }
         }
     }
@@ -166,59 +166,6 @@ private struct TaskCheckControl: View {
         }
         .buttonStyle(.plain)
         .symbolEffect(.bounce, value: isDone)
-    }
-}
-
-private struct AddTaskSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var hasDeadline = true
-    @State private var due = Calendar.current.date(byAdding: .day, value: 3, to: Date()) ?? Date()
-    @State private var priority: TaskPriority = .normal
-
-    let onSave: (String, Date?, TaskPriority) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Название", text: $title)
-                }
-                Section {
-                    Toggle("Указать срок", isOn: $hasDeadline)
-                    if hasDeadline {
-                        DatePicker("Срок", selection: $due, displayedComponents: .date)
-                    }
-                }
-                Section {
-                    Picker("", selection: $priority) {
-                        Text(TaskPriority.normal.rawValue).tag(TaskPriority.normal)
-                        Text(TaskPriority.high.rawValue).tag(TaskPriority.high)
-                    }
-                    .pickerStyle(.segmented)
-                } header: {
-                    Text("Приоритет")
-                        .textCase(nil)
-                }
-            }
-            .navigationTitle("Новая задача")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Отмена") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Сохранить") {
-                        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        onSave(trimmed, hasDeadline ? due : nil, priority)
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-        }
     }
 }
 
@@ -296,7 +243,7 @@ private struct TasksHistoryView: View {
             Text(t.title)
                 .font(.body)
                 .foregroundStyle(.primary)
-            Text("\(TaskItem.dueLabel(deadline: t.deadline, createdAt: t.createdAt)) · \(t.origin.rawValue)")
+            Text("\(TaskItem.dueLabel(deadline: t.deadline, createdAt: t.createdAt)) · \(t.origin.label)")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }

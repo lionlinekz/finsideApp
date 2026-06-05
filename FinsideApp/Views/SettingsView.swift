@@ -46,6 +46,16 @@ struct SettingsView: View {
                     } label: {
                         Label("Банковские счета", systemImage: "building.columns")
                     }
+                    NavigationLink {
+                        CategoriesView()
+                    } label: {
+                        Label("Категории", systemImage: "folder")
+                    }
+                    NavigationLink {
+                        CategoryAutomationRulesView()
+                    } label: {
+                        Label("Правила категорий", systemImage: "wand.and.stars")
+                    }
                 }
 
                 Section {

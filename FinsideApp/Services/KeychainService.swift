@@ -8,6 +8,7 @@ enum KeychainService {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case pinHash = "pin_hash"
+        case apnsToken = "apns_token"
     }
 
     // MARK: - Save

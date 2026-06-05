@@ -8,6 +8,13 @@ enum TaskPriority: String, Codable, CaseIterable {
 enum TaskOrigin: String, Codable, CaseIterable {
     case system = "Система"
     case user = "Моя задача"
+
+    var label: String {
+        switch self {
+        case .system: return "Система"
+        case .user: return "Моя заметка"
+        }
+    }
 }
 
 struct TaskItem: Identifiable, Equatable, Codable {

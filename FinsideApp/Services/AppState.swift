@@ -143,6 +143,8 @@ final class AppState {
     // MARK: - Logout
 
     func logout() {
+        // Отписать устройство от push до того, как чистим JWT.
+        Task { await PushRegistrationService.shared.unregisterCurrent() }
         KeychainService.clearAll()
         user = nil
         pendingChatOpenConversationId = nil

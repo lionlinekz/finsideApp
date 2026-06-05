@@ -11,14 +11,35 @@ struct CalendarTabView: View {
     @State private var selectedStatusFilter: EventStatusFilter?
     @State private var didScrollToToday = false
     @State private var swipeForward = true
+    @State private var showAddNote = false
 
     private let calendar = Calendar.current
     private let ruLocale = Locale(identifier: "ru_RU")
 
-    /// Как в Finpro: окно дней вокруг «сегодня» для горизонтальной ленты.
+    /// Горизонтальная лента: выбранный месяц ± соседние недели, чтобы можно было
+    /// долистать до прошлых/будущих месяцев (раньше было только 84 дня от «сегодня−28»).
     private var dayStrip: [Date] {
-        let start = calendar.date(byAdding: .day, value: -28, to: calendar.startOfDay(for: Date())) ?? Date()
-        return (0 ..< 84).compactMap { calendar.date(byAdding: .day, value: $0, to: start) }
+        let anchor = calendar.startOfDay(for: selectedDate)
+        var monthComps = calendar.dateComponents([.year, .month], from: anchor)
+        monthComps.day = 1
+        guard let monthStart = calendar.date(from: monthComps) else { return [anchor] }
+        guard let nextMonth = calendar.date(byAdding: .month, value: 1, to: monthStart),
+              let monthEnd = calendar.date(byAdding: .day, value: -1, to: nextMonth)
+        else { return [anchor] }
+
+        let padDays = 45
+        guard let start = calendar.date(byAdding: .day, value: -padDays, to: monthStart),
+              let end = calendar.date(byAdding: .day, value: padDays, to: monthEnd)
+        else { return [anchor] }
+
+        var days: [Date] = []
+        var cursor = start
+        while cursor <= end {
+            days.append(cursor)
+            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else { break }
+            cursor = next
+        }
+        return days
     }
 
     private var datesWithMarkers: Set<String> {
@@ -138,12 +159,27 @@ struct CalendarTabView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
+                        Button {
+                            showAddNote = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 20, weight: .light))
+                                .symbolRenderingMode(.hierarchical)
+                        }
+                        .accessibilityLabel("Новая заметка")
+
                         if isLoading {
                             ProgressView()
                                 .controlSize(.small)
                         }
                         AvatarMenuButton()
                     }
+                }
+            }
+            .sheet(isPresented: $showAddNote) {
+                AddNoteSheet(initialDueDate: selectedDate) { title, deadline, priority in
+                    appState.addUserTask(title: title, deadline: deadline, priority: priority)
+                    DashboardHaptics.lightImpact()
                 }
             }
             .task { await loadEvents() }
@@ -204,7 +240,13 @@ struct CalendarTabView: View {
         DashboardHaptics.lightImpact()
     }
 
-    // MARK: - Day strip (как Finpro)
+    private var dayStripMonthKey: String {
+        let y = calendar.component(.year, from: selectedDate)
+        let m = calendar.component(.month, from: selectedDate)
+        return "\(y)-\(m)"
+    }
+
+    // MARK: - Day strip
 
     private var dayStripView: some View {
         ScrollViewReader { proxy in
@@ -215,6 +257,7 @@ struct CalendarTabView: View {
                             .id(day.timeIntervalSince1970)
                     }
                 }
+                .id(dayStripMonthKey)
                 .padding(.horizontal, 2)
                 .padding(.vertical, 4)
             }
@@ -236,7 +279,7 @@ struct CalendarTabView: View {
     private func dayCell(_ day: Date) -> some View {
         let isSelected = calendar.isDate(day, inSameDayAs: selectedDate)
         let isToday = calendar.isDateInToday(day)
-        let cellWidth: CGFloat = isToday ? 76 : 52
+        let cellWidth: CGFloat = isToday ? 72 : 56
         let dayIso = dateISO(day)
         let hasEventsOnDay = datesWithMarkers.contains(dayIso)
 
@@ -248,13 +291,22 @@ struct CalendarTabView: View {
             }
             DashboardHaptics.lightImpact()
         } label: {
-            VStack(spacing: 6) {
-                Text(weekdayShort(day))
+            VStack(spacing: 4) {
+                Text(isToday ? "Сегодня" : weekdayShort(day))
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(
+                        isToday
+                            ? (isSelected ? Color.white.opacity(0.92) : Color.accentColor)
+                            : Color.secondary.opacity(0.7)
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 Text(dayNumber(day))
                     .font(.title3.monospacedDigit())
                     .foregroundStyle(isSelected ? Color.white : Color.primary)
+                Text(monthShort(day))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
                 if hasEventsOnDay {
                     Circle()
                         .fill(isSelected ? Color.white.opacity(0.9) : Color.accentColor)
@@ -262,18 +314,6 @@ struct CalendarTabView: View {
                 } else {
                     Spacer()
                         .frame(height: 5)
-                }
-                if isToday {
-                    Text("Сегодня")
-                        .font(.caption2)
-                        .fontWeight(.medium)
-                        .foregroundStyle(isSelected ? Color.white.opacity(0.92) : Color.accentColor)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.85)
-                } else {
-                    Text(" ")
-                        .font(.caption2)
-                        .accessibilityHidden(true)
                 }
             }
             .frame(width: cellWidth, height: 78)
@@ -297,6 +337,15 @@ struct CalendarTabView: View {
         f.locale = ruLocale
         f.setLocalizedDateFormatFromTemplate("EEE")
         return f.string(from: date).replacingOccurrences(of: ".", with: "")
+    }
+
+    private func monthShort(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = ruLocale
+        f.setLocalizedDateFormatFromTemplate("MMM")
+        return f.string(from: date)
+            .replacingOccurrences(of: ".", with: "")
+            .lowercased(with: ruLocale)
     }
 
     private func dayNumber(_ date: Date) -> String {
@@ -446,7 +495,7 @@ struct CalendarTabView: View {
                         }
 
                         if !pastIncompleteTasks.isEmpty {
-                            Text("Задачи с предыдущих дней")
+                            Text("Заметки с предыдущих дней")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 6)
@@ -470,7 +519,7 @@ struct CalendarTabView: View {
     }
 
     private var emptyDayCard: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Image(systemName: "calendar.badge.checkmark")
                 .font(.system(size: 36, weight: .light))
                 .symbolRenderingMode(.hierarchical)
@@ -479,6 +528,15 @@ struct CalendarTabView: View {
             Text("На эту дату записей нет")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            Button {
+                showAddNote = true
+            } label: {
+                Label("Добавить заметку", systemImage: "note.text.badge.plus")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.indigo)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 28)
@@ -677,7 +735,7 @@ private struct CalendarTaskRow: View {
                             .font(.caption.bold())
                             .foregroundStyle(.indigo)
                     } else {
-                        Image(systemName: "checklist")
+                        Image(systemName: "note.text")
                             .font(.caption)
                             .foregroundStyle(.indigo)
                     }
@@ -693,7 +751,7 @@ private struct CalendarTaskRow: View {
                         .foregroundStyle(task.isDone ? .secondary : .primary)
                         .lineLimit(2)
                     Spacer(minLength: 4)
-                    Text("Задача")
+                    Text("Заметка")
                         .font(.caption2.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
@@ -702,7 +760,7 @@ private struct CalendarTaskRow: View {
                 }
 
                 HStack(spacing: 8) {
-                    Label(dayCaption, systemImage: "checklist")
+                    Label(dayCaption, systemImage: "note.text")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .labelStyle(.titleAndIcon)

@@ -235,6 +235,8 @@ final class APIService {
         bankStatementUploadId: Int? = nil,
         paymentBank: String? = nil,
         cashOnly: Bool = false,
+        branchId: Int? = nil,
+        branchNone: Bool = false,
         offset: Int = 0,
         limit: Int = 50
     ) async throws -> LedgerLinesResponse {
@@ -246,6 +248,8 @@ final class APIService {
         if let bankStatementUploadId { path += "&bank_statement_upload_id=\(bankStatementUploadId)" }
         if let paymentBank, !paymentBank.isEmpty { path += "&payment_bank=\(paymentBank.forURLQuery)" }
         if cashOnly { path += "&cash_only=true" }
+        if let branchId { path += "&branch_id=\(branchId)" }
+        else if branchNone { path += "&branch_id=none" }
         let data = try await get(path: path)
         if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
            !errResp.error.isEmpty {
@@ -284,6 +288,49 @@ final class APIService {
         _ = try await postAuth(path: "/chat/conversations/\(conversationId)/read/", body: [:])
     }
 
+    /// Удаляет все сообщения в канале на сервере (для всех участников).
+    func clearConversationHistory(conversationId: Int) async throws {
+        _ = try await postAuth(path: "/chat/conversations/\(conversationId)/clear/", body: [:])
+    }
+
+    /// Отправить одно или несколько изображений (multipart) с опциональной подписью.
+    func sendChatImages(
+        conversationId: Int,
+        images: [(data: Data, fileName: String, mimeType: String)],
+        caption: String
+    ) async throws -> ChatMessage {
+        let data = try await uploadChatImages(
+            path: "/chat/conversations/\(conversationId)/messages/image/",
+            images: images,
+            caption: caption
+        )
+        if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+           !errResp.error.isEmpty {
+            throw APIError.serverError(errResp.error)
+        }
+        return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+    }
+
+    /// Список контактов (команда + другие пользователи, с кем уже была переписка).
+    func chatContacts(query: String = "") async throws -> ChatContactsResponse {
+        var path = "/chat/contacts/"
+        if !query.isEmpty {
+            let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            path += "?q=\(q)"
+        }
+        let data = try await get(path: path)
+        return try JSONDecoder().decode(ChatContactsResponse.self, from: data)
+    }
+
+    /// Открыть или создать 1-1 личный чат с пользователем.
+    func openDirectChat(userId: Int) async throws -> DirectChatOpenResponse {
+        let data = try await postAuthJSONChecked(
+            path: "/chat/direct/open/",
+            json: ["user_id": userId]
+        )
+        return try JSONDecoder().decode(DirectChatOpenResponse.self, from: data)
+    }
+
     func approveMessage(messageId: Int) async throws -> ChatMessage {
         let data = try await postAuth(path: "/chat/messages/\(messageId)/approve/", body: [:])
         return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
@@ -294,9 +341,96 @@ final class APIService {
         return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
     }
 
+    func markMoneySent(messageId: Int) async throws -> ChatMessage {
+        let data = try await postAuth(
+            path: "/chat/messages/\(messageId)/mark-money-sent/",
+            body: [:]
+        )
+        return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+    }
+
+    /// Прикрепить PDF-квитанцию Kaspi к согласованному запросу (только инициатор).
+    func attachApprovalReceipt(messageId: Int, fileData: Data, fileName: String) async throws -> ChatMessage {
+        let data = try await uploadMultipart(
+            path: "/chat/messages/\(messageId)/attach-receipt/",
+            fileData: fileData,
+            fileName: fileName,
+            mimeType: "application/pdf"
+        )
+        return try JSONDecoder().decode(ApprovalReceiptAttachResponse.self, from: data).message
+    }
+
     func pendingApprovals() async throws -> [PendingApprovalItem] {
         let data = try await get(path: "/chat/pending-approvals/")
         return try JSONDecoder().decode(PendingApprovalsResponse.self, from: data).pendingApprovals
+    }
+
+    /// Статистика согласований за период (fallback, если поле нет в `/dashboard/`).
+    func approvalStats(period: String, date: String? = nil) async throws -> DashboardApprovalStats {
+        var path = "/chat/approval-stats/?period=\(period)"
+        if let date { path += "&date=\(date)" }
+        let data = try await get(path: path)
+        return try JSONDecoder().decode(DashboardApprovalStatsResponse.self, from: data).approvalStats
+    }
+
+    // MARK: - Device push tokens (APNs / FCM)
+
+    /// Передать серверу device-token, чтобы он смог слать APNs/FCM push.
+    /// Безопасно вызывать многократно — backend делает upsert.
+    func registerDeviceToken(
+        token: String,
+        platform: String = "ios",
+        bundleId: String,
+        environment: String
+    ) async throws {
+        let body: [String: Any] = [
+            "token": token,
+            "platform": platform,
+            "bundle_id": bundleId,
+            "environment": environment,
+        ]
+        _ = try await postAuthJSONChecked(path: "/devices/register/", json: body)
+    }
+
+    /// Удалить device-token (например, при logout / выключении уведомлений).
+    func unregisterDeviceToken(token: String) async throws {
+        _ = try await postAuthJSONChecked(
+            path: "/devices/unregister/",
+            json: ["token": token]
+        )
+    }
+
+    /// Создать новый запрос на согласование. Сервер:
+    /// — найдёт или создаст internal-чат инициатора с управляющими/владельцами;
+    /// — опубликует в нём сообщение типа `approval_request` со статусом `pending`;
+    /// — разошлёт каждому согласующему уведомление.
+    func createApprovalRequest(_ body: CreateApprovalRequestBody) async throws -> ApprovalRequestCreateResponse {
+        var payload: [String: Any] = [:]
+        if let amount = body.amount, !amount.isEmpty {
+            payload["amount"] = amount
+        }
+        if let currency = body.currency, !currency.isEmpty {
+            payload["currency"] = currency
+        }
+        if let detail = body.detail, !detail.isEmpty {
+            payload["description"] = detail
+        }
+
+        var json: [String: Any] = [
+            "text": body.text,
+            "payload": payload,
+        ]
+        if !body.approverUserIds.isEmpty {
+            json["approver_user_ids"] = body.approverUserIds
+        }
+        if let conversationId = body.conversationId {
+            json["conversation_id"] = conversationId
+        }
+        let data = try await postAuthJSONChecked(
+            path: "/chat/approval-requests/create/",
+            json: json
+        )
+        return try JSONDecoder().decode(ApprovalRequestCreateResponse.self, from: data)
     }
 
     func uploadStatement(fileData: Data, fileName: String) async throws -> ImportStatementResponse {
@@ -474,6 +608,229 @@ final class APIService {
         _ = try await postAuthJSONChecked(path: "/branches/points/\(id)/delete/", json: [:])
     }
 
+    // MARK: - Categories (настройки → категории)
+
+    func categories(type: CategoryType? = nil) async throws -> CategoriesResponse {
+        var path = "/categories/"
+        if let type {
+            path += "?type=\(type.rawValue)"
+        }
+        let data = try await get(path: path)
+        return try JSONDecoder().decode(CategoriesResponse.self, from: data)
+    }
+
+    func addCategory(name: String, type: CategoryType) async throws -> CategoryItem {
+        let body: [String: Any] = [
+            "name": name,
+            "type": type.rawValue,
+        ]
+        let data = try await postAuthJSONChecked(path: "/categories/add/", json: body)
+        return try JSONDecoder().decode(CategoryAddResponse.self, from: data).category
+    }
+
+    func addSubcategory(categoryId: Int, name: String) async throws -> SubcategoryItem {
+        let body: [String: Any] = [
+            "category_id": categoryId,
+            "name": name,
+        ]
+        let data = try await postAuthJSONChecked(path: "/categories/subcategories/add/", json: body)
+        return try JSONDecoder().decode(SubcategoryAddResponse.self, from: data).subcategory
+    }
+
+    // MARK: - Reconciliation / categorization
+
+    func uncategorizedTransactions(
+        uploadId: Int? = nil,
+        iban: String? = nil,
+        offset: Int = 0,
+        limit: Int = 50
+    ) async throws -> UncategorizedListResponse {
+        var parts = ["limit=\(limit)", "offset=\(offset)"]
+        if let uploadId {
+            parts.append("upload_id=\(uploadId)")
+        }
+        if let iban, !iban.isEmpty {
+            parts.append("iban=\(iban.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? iban)")
+        }
+        let path = "/reconciliation/uncategorized/?" + parts.joined(separator: "&")
+        let data = try await get(path: path)
+        return try JSONDecoder().decode(UncategorizedListResponse.self, from: data)
+    }
+
+    func assignPaymentCategory(
+        itemId: Int,
+        categoryId: Int,
+        subcategoryId: Int?
+    ) async throws -> AssignCategoryResponse {
+        var body: [String: Any] = [
+            "item_id": itemId,
+            "category_id": categoryId,
+        ]
+        if let subcategoryId {
+            body["subcategory_id"] = subcategoryId
+        }
+        let data = try await postAuthJSONChecked(
+            path: "/reconciliation/assign-payment-category/",
+            json: body
+        )
+        return try JSONDecoder().decode(AssignCategoryResponse.self, from: data)
+    }
+
+    func assignIncomeCategory(
+        incomeId: Int,
+        categoryId: Int,
+        subcategoryId: Int?
+    ) async throws -> AssignCategoryResponse {
+        var body: [String: Any] = [
+            "income_id": incomeId,
+            "category_id": categoryId,
+        ]
+        if let subcategoryId {
+            body["subcategory_id"] = subcategoryId
+        }
+        let data = try await postAuthJSONChecked(
+            path: "/reconciliation/assign-income-category/",
+            json: body
+        )
+        return try JSONDecoder().decode(AssignCategoryResponse.self, from: data)
+    }
+
+    func similarCategorySuggestions(
+        itemType: String,
+        itemId: Int,
+        uploadId: Int?
+    ) async throws -> SimilarCategorySuggestions {
+        var path = "/reconciliation/similar-suggestions/?item_type=\(itemType)&item_id=\(itemId)"
+        if let uploadId {
+            path += "&upload_id=\(uploadId)"
+        }
+        let data = try await get(path: path)
+        return try JSONDecoder().decode(SimilarCategorySuggestions.self, from: data)
+    }
+
+    func bulkApplyCategory(
+        uploadId: Int,
+        direction: String,
+        referenceId: Int,
+        categoryId: Int,
+        subcategoryId: Int?
+    ) async throws -> BulkApplyCategoryResponse {
+        var body: [String: Any] = [
+            "upload_id": uploadId,
+            "direction": direction,
+            "reference_id": referenceId,
+            "category_id": categoryId,
+        ]
+        if let subcategoryId {
+            body["subcategory_id"] = subcategoryId
+        }
+        let data = try await postAuthJSONChecked(
+            path: "/reconciliation/bulk-apply-category/",
+            json: body
+        )
+        return try JSONDecoder().decode(BulkApplyCategoryResponse.self, from: data)
+    }
+
+    func createTextAutocatRule(
+        itemType: String,
+        itemId: Int,
+        matchSubstring: String,
+        categoryId: Int,
+        subcategoryId: Int?
+    ) async throws -> CreateTextAutocatRuleResponse {
+        var body: [String: Any] = [
+            "item_type": itemType,
+            "item_id": itemId,
+            "match_substring": matchSubstring,
+            "category_id": categoryId,
+        ]
+        if let subcategoryId {
+            body["subcategory_id"] = subcategoryId
+        }
+        let data = try await postAuthJSONChecked(
+            path: "/reconciliation/create-text-autocat-rule/",
+            json: body
+        )
+        return try JSONDecoder().decode(CreateTextAutocatRuleResponse.self, from: data)
+    }
+
+    func automationRules() async throws -> AutomationRulesResponse {
+        let data = try await get(path: "/reconciliation/automation-rules/")
+        return try JSONDecoder().decode(AutomationRulesResponse.self, from: data)
+    }
+
+    func updateAutomationRule(
+        kind: String,
+        id: Int,
+        matchDescription: String? = nil,
+        matchAmount: String? = nil,
+        matchSubstring: String? = nil,
+        categoryId: Int? = nil,
+        subcategoryId: Int? = nil
+    ) async throws -> AutomationRuleMutationResponse {
+        var body: [String: Any] = [
+            "kind": kind,
+            "id": id,
+        ]
+        if let matchDescription { body["match_description"] = matchDescription }
+        if let matchAmount { body["match_amount"] = matchAmount }
+        if let matchSubstring { body["match_substring"] = matchSubstring }
+        if let categoryId { body["category_id"] = categoryId }
+        if let subcategoryId { body["subcategory_id"] = subcategoryId }
+        let data = try await postAuthJSONChecked(
+            path: "/reconciliation/automation-rules/update/",
+            json: body
+        )
+        return try JSONDecoder().decode(AutomationRuleMutationResponse.self, from: data)
+    }
+
+    func deleteAutomationRule(kind: String, id: Int) async throws {
+        let body: [String: Any] = [
+            "kind": kind,
+            "id": id,
+        ]
+        _ = try await postAuthJSONChecked(
+            path: "/reconciliation/automation-rules/delete/",
+            json: body
+        )
+    }
+
+    // MARK: - Manual expenses (dashboard)
+
+    func addExpense(
+        amount: Double,
+        description: String?,
+        date: Date,
+        categoryId: Int?,
+        subcategoryId: Int?,
+        isPersonalMoney: Bool,
+        paymentBank: String?
+    ) async throws -> ExpenseAddResponse {
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = .current
+        dateFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        var body: [String: Any] = [
+            "amount": amount,
+            "date": dateFormatter.string(from: date),
+            "is_personal_money": isPersonalMoney,
+        ]
+        if let description, !description.isEmpty {
+            body["description"] = description
+        }
+        if let categoryId {
+            body["category_id"] = categoryId
+        }
+        if let subcategoryId {
+            body["subcategory_id"] = subcategoryId
+        }
+        if let paymentBank, !paymentBank.isEmpty {
+            body["payment_bank"] = paymentBank
+        }
+        let data = try await postAuthJSONChecked(path: "/expenses/add/", json: body)
+        return try JSONDecoder().decode(ExpenseAddResponse.self, from: data)
+    }
+
     // MARK: - Support / maintenance
 
     func deleteAllTransactionsConfirmed() async throws -> DeleteAllTransactionsResponse {
@@ -596,7 +953,80 @@ final class APIService {
         }
     }
 
-    private func uploadMultipart(path: String, fileData: Data, fileName: String, isRetry: Bool = false) async throws -> Data {
+    private func uploadChatImages(
+        path: String,
+        images: [(data: Data, fileName: String, mimeType: String)],
+        caption: String,
+        isRetry: Bool = false
+    ) async throws -> Data {
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = KeychainService.read(key: .accessToken)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body = Data()
+
+        if !caption.isEmpty {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"caption\"\r\n\r\n".data(using: .utf8)!)
+            body.append(caption.data(using: .utf8) ?? Data())
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        for (idx, img) in images.enumerated() {
+            let field = idx == 0 ? "file" : "file\(idx + 1)"
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append(
+                "Content-Disposition: form-data; name=\"\(field)\"; filename=\"\(img.fileName)\"\r\n"
+                    .data(using: .utf8)!
+            )
+            body.append("Content-Type: \(img.mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(img.data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 401 {
+                    if !isRetry {
+                        _ = try await refreshTokens()
+                        return try await uploadChatImages(
+                            path: path, images: images, caption: caption, isRetry: true
+                        )
+                    }
+                    throw APIError.unauthorized
+                }
+                if !(200...299).contains(http.statusCode) {
+                    if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+                       !errResp.error.isEmpty {
+                        throw APIError.serverError(errResp.error)
+                    }
+                    throw APIError.serverError("Ошибка сервера (\(http.statusCode))")
+                }
+            }
+            return data
+        } catch let err as APIError {
+            throw err
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
+
+    private func uploadMultipart(
+        path: String,
+        fileData: Data,
+        fileName: String,
+        mimeType: String = "text/plain",
+        isRetry: Bool = false
+    ) async throws -> Data {
         guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
         let boundary = UUID().uuidString
         var request = URLRequest(url: url)
@@ -610,19 +1040,34 @@ final class APIService {
         var body = Data()
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: text/plain\r\n\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
         body.append(fileData)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 401 {
-                if !isRetry {
-                    _ = try await refreshTokens()
-                    return try await uploadMultipart(path: path, fileData: fileData, fileName: fileName, isRetry: true)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 401 {
+                    if !isRetry {
+                        _ = try await refreshTokens()
+                        return try await uploadMultipart(
+                            path: path,
+                            fileData: fileData,
+                            fileName: fileName,
+                            mimeType: mimeType,
+                            isRetry: true
+                        )
+                    }
+                    throw APIError.unauthorized
                 }
-                throw APIError.unauthorized
+                if !(200...299).contains(http.statusCode) {
+                    if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+                       !errResp.error.isEmpty {
+                        throw APIError.serverError(errResp.error)
+                    }
+                    throw APIError.serverError("Ошибка сервера (\(http.statusCode))")
+                }
             }
             return data
         } catch let err as APIError {
@@ -664,6 +1109,19 @@ final class APIService {
         } catch {
             throw APIError.networkError(error)
         }
+    }
+}
+
+extension Error {
+    /// Pull-to-refresh и уход со экрана отменяют `URLSession` (-999); это не сбой загрузки.
+    var finside_isCancellationLike: Bool {
+        if self is CancellationError { return true }
+        let ns = self as NSError
+        if ns.domain == NSURLErrorDomain && ns.code == NSURLErrorCancelled { return true }
+        if let api = self as? APIError, case .networkError(let inner) = api {
+            return inner.finside_isCancellationLike
+        }
+        return false
     }
 }
 

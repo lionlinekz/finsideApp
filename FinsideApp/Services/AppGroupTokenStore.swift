@@ -6,10 +6,14 @@ enum AppGroupTokenStore {
     private static let accessKey = "shared_access_token"
 
     static func saveAccessTokenForShareExtension(_ token: String) {
-        UserDefaults(suiteName: suiteName)?.set(token, forKey: accessKey)
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
+        defaults.set(token, forKey: accessKey)
+        defaults.synchronize()
     }
 
     static func clearAccessTokenForShareExtension() {
-        UserDefaults(suiteName: suiteName)?.removeObject(forKey: accessKey)
+        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
+        defaults.removeObject(forKey: accessKey)
+        defaults.synchronize()
     }
 }

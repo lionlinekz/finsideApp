@@ -108,7 +108,18 @@ private struct VoluntaryDataDeletionAgreementView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var hasScrolledToBottom = false
+    @State private var confirmedHasDataCopies = false
+    @State private var confirmedDataExported = false
+    @State private var confirmedNoRetentionRequirements = false
     @State private var acceptedTerms = false
+
+    private var allPrerequisitesConfirmed: Bool {
+        confirmedHasDataCopies && confirmedDataExported && confirmedNoRetentionRequirements
+    }
+
+    private var canDelete: Bool {
+        hasScrolledToBottom && allPrerequisitesConfirmed && acceptedTerms
+    }
 
     private var agreementDateLabel: String {
         let f = DateFormatter()
@@ -141,18 +152,39 @@ private struct VoluntaryDataDeletionAgreementView: View {
                     )
                     .font(.body)
 
-                    Text("Перед удалением данных я самостоятельно убедился(ась), что:")
+                    Text("Перед удалением данных подтвердите каждый пункт:")
                         .font(.body.weight(.semibold))
 
-                    agreementBullet(
-                        "у меня имеются копии удаляемых данных, отчёты из платформы получены мной в полном объёме;"
+                    VStack(alignment: .leading, spacing: 0) {
+                        prerequisiteToggle(
+                            isOn: $confirmedHasDataCopies,
+                            text: "У меня есть копии удаляемых данных, отчёты из платформы получены в полном объёме."
+                        )
+                        Divider().padding(.leading, 16)
+                        prerequisiteToggle(
+                            isOn: $confirmedDataExported,
+                            text: "Вся необходимая информация выгружена и проверена."
+                        )
+                        Divider().padding(.leading, 16)
+                        prerequisiteToggle(
+                            isOn: $confirmedNoRetentionRequirements,
+                            text: "У меня нет дополнительных требований по сохранению данных."
+                        )
+                    }
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .strokeBorder(Color(.separator), lineWidth: 0.5)
                     )
-                    agreementBullet(
-                        "вся необходимая информация была выгружена и проверена;"
-                    )
-                    agreementBullet(
-                        "у меня отсутствуют дополнительные требования по сохранению данных."
-                    )
+
+                    if !allPrerequisitesConfirmed {
+                        Label(
+                            "Отметьте все три пункта, чтобы подтвердить соглашение.",
+                            systemImage: "checkmark.circle"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    }
 
                     Text(
                         "Я подтверждаю, что после удаления данных не буду иметь каких-либо претензий к компании Finside, её сотрудникам и партнёрам, связанных с удалением данных, невозможностью их восстановления, потерей информации либо иными последствиями удаления данных."
@@ -180,7 +212,7 @@ private struct VoluntaryDataDeletionAgreementView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Дата: \(agreementDateLabel)")
                         Text("ФИО / Компания: \(userPartyLine)")
-                        Text("Подпись: подтверждается нажатием «Удалить» и финальным согласием в следующем окне.")
+                        Text("Подпись: подтверждается отметкой всех пунктов и нажатием «Удалить».")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -194,7 +226,14 @@ private struct VoluntaryDataDeletionAgreementView: View {
                         .font(.subheadline)
                     }
                     .tint(.accentColor)
+                    .disabled(!allPrerequisitesConfirmed)
+                    .opacity(allPrerequisitesConfirmed ? 1 : 0.45)
                     .padding(.top, 4)
+                    .onChange(of: allPrerequisitesConfirmed) { _, isConfirmed in
+                        if !isConfirmed {
+                            acceptedTerms = false
+                        }
+                    }
 
                     Color.clear
                         .frame(height: 1)
@@ -217,13 +256,24 @@ private struct VoluntaryDataDeletionAgreementView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Удалить", role: .destructive) {
-                        guard hasScrolledToBottom, acceptedTerms else { return }
+                        guard canDelete else { return }
                         onAgreementAcceptedDelete()
                     }
-                    .disabled(!hasScrolledToBottom || !acceptedTerms)
+                    .disabled(!canDelete)
                 }
             }
         }
+    }
+
+    private func prerequisiteToggle(isOn: Binding<Bool>, text: String) -> some View {
+        Toggle(isOn: isOn) {
+            Text(text)
+                .font(.subheadline)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .tint(.accentColor)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
     private func agreementBullet(_ text: String) -> some View {

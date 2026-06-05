@@ -5,6 +5,8 @@ struct ChatListView: View {
     @State private var segment: ChannelsTopSegment = .notifications
     @State private var selectedSubFilter: String?
     @State private var navigationPath = NavigationPath()
+    @State private var showNewChatSheet = false
+    @State private var showNewApprovalSheet = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -38,10 +40,16 @@ struct ChatListView: View {
             .navigationTitle("Каналы")
             .toolbar {
                 #if os(iOS) || os(visionOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    composeMenu
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     AvatarMenuButton()
                 }
                 #else
+                ToolbarItem(placement: .automatic) {
+                    composeMenu
+                }
                 ToolbarItem(placement: .automatic) {
                     AvatarMenuButton()
                 }
@@ -49,6 +57,18 @@ struct ChatListView: View {
             }
             .navigationDestination(for: Conversation.self) { conv in
                 ChatDetailView(conversation: conv)
+            }
+            .sheet(isPresented: $showNewChatSheet) {
+                NewChatContactsView { conv in
+                    if segment != .chats { segment = .chats }
+                    navigationPath.append(conv)
+                }
+            }
+            .sheet(isPresented: $showNewApprovalSheet) {
+                NewApprovalRequestView { conv in
+                    if segment != .chats { segment = .chats }
+                    navigationPath.append(conv)
+                }
             }
             .onChange(of: segment) { _, _ in
                 selectedSubFilter = nil
@@ -67,6 +87,27 @@ struct ChatListView: View {
               let conv = chatService.conversations.first(where: { $0.id == id }) else { return }
         navigationPath.append(conv)
         chatService.pendingNavigationConversationId = nil
+    }
+
+    /// Меню «+» в навигации: можно начать обычный чат или сразу отправить
+    /// запрос на согласование управляющему/владельцу.
+    private var composeMenu: some View {
+        Menu {
+            Button {
+                showNewApprovalSheet = true
+            } label: {
+                Label("Запрос на согласование", systemImage: "checkmark.seal")
+            }
+            Button {
+                showNewChatSheet = true
+            } label: {
+                Label("Новый чат", systemImage: "bubble.left.and.bubble.right")
+            }
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.system(size: 17, weight: .semibold))
+        }
+        .accessibilityLabel("Создать")
     }
 
     // MARK: - Action Required
@@ -132,7 +173,9 @@ struct ChatListView: View {
             return options.sorted { $0.label < $1.label }
         case .chats:
             var options: [SubFilterOption] = []
-            let internalConvs = chatService.conversations.filter { $0.kind == "internal" }
+            let internalConvs = chatService.conversations.filter {
+                $0.kind == "internal" || $0.kind == "direct"
+            }
             var seenInt = Set<String>()
             for conv in internalConvs {
                 for name in conv.participants where !name.isEmpty && seenInt.insert(name).inserted {
@@ -181,7 +224,9 @@ struct ChatListView: View {
         case .notifications:
             bySegment = chatService.conversations.filter { $0.kind == "system" }
         case .chats:
-            bySegment = chatService.conversations.filter { $0.kind == "internal" || $0.kind == "external" }
+            bySegment = chatService.conversations.filter {
+                $0.kind == "internal" || $0.kind == "external" || $0.kind == "direct"
+            }
         }
 
         guard let sub = selectedSubFilter else { return bySegment }
@@ -192,7 +237,9 @@ struct ChatListView: View {
         case .chats:
             if sub.hasPrefix("int:") {
                 let name = String(sub.dropFirst(4))
-                return bySegment.filter { $0.kind == "internal" && $0.participants.contains(name) }
+                return bySegment.filter {
+                    ($0.kind == "internal" || $0.kind == "direct") && $0.participants.contains(name)
+                }
             }
             if sub.hasPrefix("ext:") {
                 let key = String(sub.dropFirst(4))
@@ -292,7 +339,7 @@ struct ConversationRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
-                    Text(conversation.title.isEmpty ? conversationDisplayName : conversation.title)
+                    Text(conversation.displayTitle)
                         .font(.body.weight(.semibold))
                         .lineLimit(1)
                     Spacer()
@@ -332,6 +379,7 @@ struct ConversationRow: View {
 
     private var kindColor: Color {
         switch conversation.kind {
+        case "direct": return .teal
         case "internal": return .blue
         case "external": return .purple
         case "system": return .orange
@@ -339,16 +387,16 @@ struct ConversationRow: View {
         }
     }
 
-    private var conversationDisplayName: String {
-        if conversation.participants.count <= 2 {
-            return conversation.participants.joined(separator: ", ")
-        }
-        return "\(conversation.participants.prefix(2).joined(separator: ", ")) +\(conversation.participants.count - 2)"
-    }
-
     private func lastMessagePreview(_ msg: ChatMessage) -> String {
+        let hasImages = !(msg.attachments ?? []).filter({ $0.isImage }).isEmpty
         switch msg.messageType {
         case .text:
+            if hasImages {
+                if msg.text.isEmpty {
+                    return "📷 Фото"
+                }
+                return "📷 \(msg.text)"
+            }
             return msg.isSystem ? "📋 \(msg.text)" : msg.text
         case .approvalRequest:
             let status = msg.approvalStatus ?? .pending

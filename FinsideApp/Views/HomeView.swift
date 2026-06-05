@@ -71,11 +71,13 @@ private func brandColor(for name: String) -> Color {
 }
 
 private enum HomeDetailSheet: Identifiable {
-    case heroLegend(DashboardSummary, String)
+    case heroLegend(DashboardSummary, String, Double, [DashboardBankAccount]?)
     case incomeDetail(DashboardSummary, PeriodComparison)
     case expenseDetail(DashboardSummary, PeriodComparison)
     case taxDetail(DashboardSummary, BranchCompany?)
+    case cashBalanceHint(DashboardSummary, DashboardCashCommitments, [DashboardBankAccount]?)
     case chartDay(ChartPoint)
+    case approvals(DashboardApprovalStats, String)
 
     var id: String {
         switch self {
@@ -83,7 +85,9 @@ private enum HomeDetailSheet: Identifiable {
         case .incomeDetail: return "income"
         case .expenseDetail: return "expense"
         case .taxDetail: return "tax"
+        case .cashBalanceHint: return "cashBal"
         case .chartDay(let p): return "chart-\(p.date)"
+        case .approvals: return "approvals"
         }
     }
 }
@@ -91,6 +95,7 @@ private enum HomeDetailSheet: Identifiable {
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(ChatService.self) private var chatService
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedPeriod: DatePeriod = .monthToDate
     @State private var customDate: Date = .now
     @State private var selectedMonth: Date = .now
@@ -104,6 +109,7 @@ struct HomeView: View {
     @State private var showDatePicker = false
     @State private var showMonthPicker = false
     @State private var dashboard: DashboardResponse?
+    @State private var approvalStats = DashboardApprovalStats.empty
     @State private var primaryBranch: BranchCompany?
     /// Старт с true, чтобы не мигать пустым «Нет данных» до первого кадра загрузки.
     @State private var isLoading = true
@@ -117,6 +123,10 @@ struct HomeView: View {
     @State private var periodSwipeNudgeX: CGFloat = 0
     /// Раскрытый блок «Банковские счета» под «Денежный остаток» (тап по остатку).
     @State private var expandedBankAccountsUnderOstatok = false
+    /// Раскрытые группы в блоке «Источники оплаты расходов».
+    @State private var expandedExpenseBankSources = false
+    @State private var expandedExpensePersonalSources = false
+    @State private var showAddExpense = false
 
     /// Мягкое ограничение как у растягивания у края экрана.
     private static func swipeRubberNudge(dx: CGFloat) -> CGFloat {
@@ -131,6 +141,91 @@ struct HomeView: View {
     /// Совпадает с `BANK_BALANCE_STALE_DAYS` в API дашборда.
     private static let bankBalanceStaleDays = 14
 
+    /// Календарный месяц выбранного периода позже текущего — остаток не показываем.
+    private var isFocusedFutureMonth: Bool {
+        let cal = Calendar.current
+        let focused: Date = {
+            switch selectedPeriod {
+            case .monthToDate: return mtdAnchorMonth
+            case .selectMonth: return selectedMonth
+            case .today: return Self.startOfMonth(todayViewDay)
+            case .custom: return Self.startOfMonth(customDate)
+            }
+        }()
+        let fc = cal.dateComponents([.year, .month], from: focused)
+        let nc = cal.dateComponents([.year, .month], from: Date())
+        guard let fy = fc.year, let fm = fc.month, let ny = nc.year, let nm = nc.month else {
+            return false
+        }
+        return fy > ny || (fy == ny && fm > nm)
+    }
+
+    /// Сумма остатков по счетам для блока «Денежный остаток».
+    private func heroCashBalanceAmount(
+        _ summary: DashboardSummary,
+        bankAccounts: [DashboardBankAccount]?,
+        hasBankAccounts: Bool
+    ) -> Double? {
+        if isFocusedFutureMonth { return nil }
+        if hasBankAccounts {
+            return summary.resolvedBankBalanceTotal(accounts: bankAccounts)
+        }
+        return summary.profit
+    }
+
+    private func heroCashBalanceIsStale(
+        _ summary: DashboardSummary,
+        bankAccounts: [DashboardBankAccount]?,
+        hasBankAccounts: Bool
+    ) -> Bool {
+        if isFocusedFutureMonth { return false }
+        guard hasBankAccounts else { return false }
+        return summary.resolvedBankBalanceIsStale(accounts: bankAccounts)
+    }
+
+    @ViewBuilder
+    private func heroCashBalanceValue(
+        _ summary: DashboardSummary,
+        bankAccounts: [DashboardBankAccount]?,
+        hasBankAccounts: Bool
+    ) -> some View {
+        if isFocusedFutureMonth {
+            EmptyView()
+        } else if let amount = heroCashBalanceAmount(
+            summary,
+            bankAccounts: bankAccounts,
+            hasBankAccounts: hasBankAccounts
+        ) {
+            let isStale = heroCashBalanceIsStale(
+                summary,
+                bankAccounts: bankAccounts,
+                hasBankAccounts: hasBankAccounts
+            )
+            Text(fmt(amount))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(
+                    amount >= 0
+                        ? DashboardRingPalette.balance
+                        : DashboardRingPalette.expense
+                )
+                .opacity(isStale ? 0.82 : 1)
+
+            if isStale {
+                HStack(spacing: 4) {
+                    Image(systemName: "clock.badge.exclamationmark")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Данные устарели")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(Color.orange.opacity(0.92))
+            }
+        } else {
+            Text("Нет данных")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     var body: some View {
         NavigationStack(path: $ledgerPath) {
             ScrollView {
@@ -140,7 +235,7 @@ struct HomeView: View {
                     } else if isLoading, dashboard == nil {
                         loadingPlaceholder
                     } else if let dashboard {
-                        contentInner(dashboard)
+                        contentInner(dashboard, approvalStats: approvalStats)
                             .offset(x: periodSwipeNudgeX)
                             .overlay {
                                 PeriodSwipeGlow(progress: periodSwipeSheenPhase)
@@ -156,7 +251,7 @@ struct HomeView: View {
             // Один жест на ScrollView: два simultaneousGesture (здесь и на внутреннем контенте)
             // давали двойной onEnded → перескок на 2 месяца/дня за один свайп.
             .simultaneousGesture(periodSwipeGesture)
-            .background(Color(.systemBackground))
+            .background(Color(.systemGroupedBackground))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { periodMenu }
                 ToolbarItem(placement: .topBarTrailing) { AvatarMenuButton() }
@@ -170,21 +265,39 @@ struct HomeView: View {
             .onAppear { if !appeared { appeared = true; loadData() } }
             .onChange(of: selectedPeriod) { _, _ in
                 expandedBankAccountsUnderOstatok = false
+                expandedExpenseBankSources = false
+                expandedExpensePersonalSources = false
                 resetAnchorsForNewPeriod()
                 loadData()
+            }
+            .onChange(of: isFocusedFutureMonth) { _, isFuture in
+                if isFuture { expandedBankAccountsUnderOstatok = false }
             }
             .navigationDestination(for: HomeLedgerRoute.self) { route in
                 LedgerListView(route: route, period: selectedPeriod.apiValue, date: ledgerDateParam())
             }
+            .sheet(isPresented: $showAddExpense) {
+                AddExpenseSheet(defaultDate: addExpenseDefaultDate()) {
+                    loadData()
+                }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
             .sheet(item: $detailSheet) { sheet in
                 switch sheet {
-                case .heroLegend(let s, let periodType):
-                    HeroRingsLegendSheet(summary: s, periodType: periodType)
+                case .heroLegend(let s, let periodType, let taxAmount, let accounts):
+                    HeroRingsLegendSheet(
+                        summary: s,
+                        periodType: periodType,
+                        taxAmount: taxAmount,
+                        bankAccounts: accounts,
+                        showBalance: !isFocusedFutureMonth
+                    )
                         .presentationDetents([.medium, .large])
                 case .incomeDetail(let s, let c):
                     MetricComparisonSheet(
                         title: "Доход",
-                        tint: Color.fIncome,
+                        tint: DashboardRingPalette.receipts,
                         current: s.totalIncome,
                         previous: c.prevIncome
                     )
@@ -192,7 +305,7 @@ struct HomeView: View {
                 case .expenseDetail(let s, let c):
                     MetricComparisonSheet(
                         title: "Расход",
-                        tint: Color.fExpense,
+                        tint: DashboardRingPalette.expense,
                         current: s.totalExpense,
                         previous: c.prevExpense
                     )
@@ -200,9 +313,21 @@ struct HomeView: View {
                 case .taxDetail(let s, let b):
                     TaxEstimateSheet(summary: s, primaryBranch: b)
                         .presentationDetents([.medium, .large])
+                case .cashBalanceHint(let s, let c, let accounts):
+                    CashBalanceHintSheet(summary: s, commitments: c, bankAccounts: accounts)
+                        .presentationDetents([.medium, .large])
                 case .chartDay(let p):
                     ChartDaySheet(point: p)
                         .presentationDetents([.medium])
+                case .approvals(let stats, let periodLabel):
+                    HomeApprovalsSheet(stats: stats, periodLabel: periodLabel) { convId in
+                        if convId > 0 {
+                            chatService.navigateToConversation(id: convId)
+                        } else {
+                            chatService.pendingOpenChatsTab = true
+                        }
+                    }
+                    .presentationDetents([.medium, .large])
                 }
             }
         }
@@ -302,10 +427,37 @@ struct HomeView: View {
         return Calendar.current.date(from: c) ?? d
     }
 
+    /// Подпись «Денежный остаток» и кнопка «i», если есть плановые/согласованные обязательства к оплате.
+    @ViewBuilder
+    private func denegnyyOstatokCaption(
+        summary: DashboardSummary,
+        cashCommitments: DashboardCashCommitments?,
+        bankAccounts: [DashboardBankAccount]?
+    ) -> some View {
+        let showInfo = !isFocusedFutureMonth && (cashCommitments?.total ?? 0) > 1e-6
+        HStack(spacing: 4) {
+            Text("Денежный остаток")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            if showInfo, let c = cashCommitments {
+                Button {
+                    DashboardHaptics.lightImpact()
+                    detailSheet = .cashBalanceHint(summary, c, bankAccounts)
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Справка: плановые и согласованные расходы к оплате")
+            }
+        }
+    }
+
     // MARK: - Content
 
     /// Контент дашборда без внешних отступов (их даёт родитель ScrollView для жеста).
-    private func contentInner(_ d: DashboardResponse) -> some View {
+    private func contentInner(_ d: DashboardResponse, approvalStats: DashboardApprovalStats) -> some View {
         let tax = DashboardDisplayTax.compute(summary: d.summary, primaryBranch: primaryBranch)
         return VStack(spacing: 20) {
             heroSection(
@@ -314,9 +466,12 @@ struct HomeView: View {
                 taxDisplay: tax,
                 ringTargets: d.ringTargets,
                 periodType: d.period.type,
+                cashCommitments: d.cashCommitments,
                 bankAccounts: d.bankAccounts,
                 showBankAccountsExpanded: $expandedBankAccountsUnderOstatok
             )
+
+            approvalsSection(approvalStats)
 
             if !d.managers.isEmpty {
                 sectionBlock("Менеджеры") { managersSection(d.managers, revenue: d.summary.revenue) }
@@ -325,18 +480,25 @@ struct HomeView: View {
                 sectionBlock("Точки продаж") { pointsSection(d.points, revenue: d.summary.revenue) }
             }
             if let expenseAccounts = d.expenseByAccount, !expenseAccounts.isEmpty {
-                sectionBlock("Оплаты расходов") { expenseByAccountSection(expenseAccounts) }
+                sectionBlock("Источники оплаты расходов") { expenseByAccountSection(expenseAccounts) }
             } else {
                 let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
                 if expenseAccountSplitTotal > 0 {
-                    sectionBlock("Оплаты расходов") { expenseAccountSourceSection(d) }
+                    sectionBlock("Источники оплаты расходов") { expenseAccountSourceSection(d) }
                 }
             }
             if !d.expensesByCategory.isEmpty {
                 sectionBlock("Топ расходов") { expensesCategorySection(d.expensesByCategory, revenue: d.summary.revenue) }
             }
+            if let branches = d.expensesByBranch, !branches.isEmpty {
+                sectionBlock("Расходы по филиалам") {
+                    expensesByBranchSection(branches, totalExpense: d.summary.totalExpense)
+                }
+            }
             if !d.chart.isEmpty {
-                sectionBlock("Динамика") { chartSection(d.chart) }
+                sectionBlock("Динамика") {
+                    chartSection(d.chart)
+                }
             }
 
             if d.summary.totalIncome == 0, d.summary.totalExpense == 0, d.summary.revenue == 0 {
@@ -361,6 +523,7 @@ struct HomeView: View {
         taxDisplay: (amount: Double, hint: String),
         ringTargets: RingTargets?,
         periodType: String,
+        cashCommitments: DashboardCashCommitments?,
         bankAccounts: [DashboardBankAccount]?,
         showBankAccountsExpanded: Binding<Bool>
     ) -> some View {
@@ -373,52 +536,67 @@ struct HomeView: View {
                 HStack(spacing: 20) {
                     Button {
                         DashboardHaptics.lightImpact()
-                        detailSheet = .heroLegend(s, periodType)
+                        detailSheet = .heroLegend(
+                            s,
+                            periodType,
+                            taxDisplay.amount,
+                            bankAccounts
+                        )
                     } label: {
-                        ringsView(s, targets: ringTargets)
-                            .frame(width: 120, height: 120)
+                        ringsView(
+                            s,
+                            targets: ringTargets,
+                            taxAmount: taxDisplay.amount,
+                            bankBalance: isFocusedFutureMonth
+                                ? nil
+                                : s.resolvedBankBalanceTotal(accounts: bankAccounts),
+                            includeBalanceInRings: !isFocusedFutureMonth
+                        )
+                            .frame(width: 124, height: 124)
                     }
                     .buttonStyle(.dashboardPressable)
 
                     VStack(alignment: .leading, spacing: 8) {
-                        Group {
-                            if hasBankAccounts {
-                                Button {
-                                    showBankAccountsExpanded.wrappedValue.toggle()
-                                    DashboardHaptics.lightImpact()
-                                } label: {
-                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("Денежный остаток")
-                                                .font(.caption.weight(.semibold))
-                                                .foregroundStyle(.secondary)
-                                            Text(fmt(s.profit))
-                                                .font(.system(size: 24, weight: .bold, design: .rounded))
-                                                .foregroundStyle(s.profit >= 0 ? Color.fIncome : Color.fExpense)
-
-                                            if let d = deltaPct(s.profit, prev.prevProfit) {
-                                                deltaLabel(d)
+                        if !isFocusedFutureMonth {
+                            Group {
+                                if hasBankAccounts {
+                                    Button {
+                                        showBankAccountsExpanded.wrappedValue.toggle()
+                                        DashboardHaptics.lightImpact()
+                                    } label: {
+                                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                denegnyyOstatokCaption(
+                                                    summary: s,
+                                                    cashCommitments: cashCommitments,
+                                                    bankAccounts: bankAccounts
+                                                )
+                                                heroCashBalanceValue(
+                                                    s,
+                                                    bankAccounts: bankAccounts,
+                                                    hasBankAccounts: hasBankAccounts
+                                                )
                                             }
+                                            Spacer(minLength: 4)
+                                            Image(systemName: showBankAccountsExpanded.wrappedValue ? "chevron.up" : "chevron.down")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.tertiary)
                                         }
-                                        Spacer(minLength: 4)
-                                        Image(systemName: showBankAccountsExpanded.wrappedValue ? "chevron.up" : "chevron.down")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
                                     }
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityHint("Показать или скрыть остатки по банковским счетам")
-                            } else {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Денежный остаток")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.secondary)
-                                    Text(fmt(s.profit))
-                                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                                        .foregroundStyle(s.profit >= 0 ? Color.fIncome : Color.fExpense)
-
-                                    if let d = deltaPct(s.profit, prev.prevProfit) {
-                                        deltaLabel(d)
+                                    .buttonStyle(.plain)
+                                    .accessibilityHint("Показать или скрыть остатки по банковским счетам")
+                                } else {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        denegnyyOstatokCaption(
+                                            summary: s,
+                                            cashCommitments: cashCommitments,
+                                            bankAccounts: bankAccounts
+                                        )
+                                        heroCashBalanceValue(
+                                            s,
+                                            bankAccounts: bankAccounts,
+                                            hasBankAccounts: hasBankAccounts
+                                        )
                                     }
                                 }
                             }
@@ -433,7 +611,7 @@ struct HomeView: View {
                                 .multilineTextAlignment(.leading)
                             Text(fmtShort(s.totalIncome))
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.fProfit)
+                                .foregroundStyle(DashboardRingPalette.receipts)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -444,7 +622,10 @@ struct HomeView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            if hasBankAccounts, showBankAccountsExpanded.wrappedValue, let banks = bankAccounts {
+            if !isFocusedFutureMonth,
+               hasBankAccounts,
+               showBankAccountsExpanded.wrappedValue,
+               let banks = bankAccounts {
                 bankAccountsSnapshotSection(banks)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -454,10 +635,9 @@ struct HomeView: View {
                 MetricRow(
                     label: "Продажи",
                     value: s.revenue,
-                    tint: .fSalesBlue,
+                    tint: DashboardRingPalette.revenue,
                     delta: deltaPct(s.revenue, prev.prevRevenue),
-                    lightOnDark: true,
-                    amountColor: .fSalesBlue,
+                    amountColor: DashboardRingPalette.revenue,
                     onTap: {
                         DashboardHaptics.lightImpact()
                         ledgerPath.append(HomeLedgerRoute.allSales(title: "Продажи"))
@@ -466,10 +646,9 @@ struct HomeView: View {
                 MetricRow(
                     label: "Расход",
                     value: s.totalExpense,
-                    tint: .fExpense,
+                    tint: DashboardRingPalette.expense,
                     delta: deltaPct(s.totalExpense, prev.prevExpense),
-                    lightOnDark: true,
-                    amountColor: .fExpense,
+                    amountColor: DashboardRingPalette.expense,
                     onTap: {
                         DashboardHaptics.lightImpact()
                         detailSheet = .expenseDetail(s, prev)
@@ -478,39 +657,135 @@ struct HomeView: View {
                 MetricRow(
                     label: "Налог",
                     value: taxDisplay.amount,
-                    tint: .fTaxEstimate,
+                    tint: DashboardRingPalette.tax(colorScheme),
                     delta: nil,
                     subtitle: nil,
                     showApproximateBadge: false,
-                    lightOnDark: true,
-                    amountColor: .fTaxEstimate,
+                    amountColor: DashboardRingPalette.tax(colorScheme),
                     onTap: {
                         DashboardHaptics.lightImpact()
                         detailSheet = .taxDetail(s, primaryBranch)
                     }
                 )
             }
+
+            Button {
+                DashboardHaptics.lightImpact()
+                showAddExpense = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.body.weight(.semibold))
+                        .symbolRenderingMode(.hierarchical)
+                    Text("Добавить расход")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .foregroundStyle(.white)
+                .liquidGlassCard(cornerRadius: 12)
+            }
+            .buttonStyle(.dashboardPressable)
+            .accessibilityHint("Открыть форму нового расхода")
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.22), value: showBankAccountsExpanded.wrappedValue)
     }
 
-    private func ringsView(_ s: DashboardSummary, targets: RingTargets?) -> some View {
-        let inc = s.totalIncome
-        let exp = s.totalExpense
-        let profit = s.profit
-        let fallbackNorm = max(inc, exp, abs(profit), 1)
+    private func addExpenseDefaultDate() -> Date {
+        let cal = Calendar.current
+        switch selectedPeriod {
+        case .today:
+            let day = cal.startOfDay(for: todayViewDay)
+            let now = Date()
+            let time = cal.dateComponents([.hour, .minute], from: now)
+            return cal.date(
+                bySettingHour: time.hour ?? 12,
+                minute: time.minute ?? 0,
+                second: 0,
+                of: day
+            ) ?? day
+        case .custom:
+            return customDate
+        case .selectMonth, .monthToDate:
+            return Date()
+        }
+    }
 
-        let incomeRatio = ringFillRatio(actual: inc, target: targets?.income, fallbackDenominator: fallbackNorm)
-        let expenseRatio = ringFillRatio(actual: exp, target: targets?.expense, fallbackDenominator: fallbackNorm)
-        let profitTarget = targets.map { $0.income - $0.expense }
-        let profitRatio = ringFillRatio(actual: profit, target: profitTarget, fallbackDenominator: fallbackNorm)
+    private struct DashboardRingLayer {
+        let ratio: Double
+        let color: Color
+        let size: CGFloat
+    }
+
+    private func ringsView(
+        _ s: DashboardSummary,
+        targets: RingTargets?,
+        taxAmount: Double,
+        bankBalance: Double?,
+        includeBalanceInRings: Bool = true
+    ) -> some View {
+        let balanceActual = includeBalanceInRings ? (bankBalance ?? s.profit) : 0
+        let receipts = s.totalIncome
+        let revenue = s.revenue
+        let expense = s.totalExpense
+        let tax = max(taxAmount, 0)
+
+        let fallbackNorm = max(abs(balanceActual), receipts, revenue, expense, tax, 1)
+
+        let layers: [DashboardRingLayer] = [
+            DashboardRingLayer(
+                ratio: ringFillRatio(
+                    actual: revenue,
+                    target: targets?.revenue,
+                    fallbackDenominator: fallbackNorm
+                ),
+                color: DashboardRingPalette.revenue,
+                size: 116
+            ),
+            DashboardRingLayer(
+                ratio: ringFillRatio(
+                    actual: max(balanceActual, 0),
+                    target: targets?.balance,
+                    fallbackDenominator: fallbackNorm
+                ),
+                color: DashboardRingPalette.balance,
+                size: 100
+            ),
+            DashboardRingLayer(
+                ratio: ringFillRatio(
+                    actual: expense,
+                    target: targets?.expense,
+                    fallbackDenominator: fallbackNorm
+                ),
+                color: DashboardRingPalette.expense,
+                size: 84
+            ),
+            DashboardRingLayer(
+                ratio: ringFillRatio(
+                    actual: receipts,
+                    target: targets?.income,
+                    fallbackDenominator: fallbackNorm
+                ),
+                color: DashboardRingPalette.receipts,
+                size: 68
+            ),
+            DashboardRingLayer(
+                ratio: ringFillRatio(
+                    actual: tax,
+                    target: targets?.tax,
+                    fallbackDenominator: fallbackNorm
+                ),
+                color: DashboardRingPalette.tax(colorScheme),
+                size: 52
+            ),
+        ]
 
         return ZStack {
-            ring(ratio: incomeRatio, color: .fProfit, width: 10, size: 110)
-            ring(ratio: expenseRatio, color: .fExpense, width: 10, size: 84)
-            ring(ratio: profitRatio, color: .fIncome, width: 10, size: 58)
+            ForEach(Array(layers.enumerated()), id: \.offset) { _, layer in
+                ring(ratio: layer.ratio, color: layer.color, width: 7, size: layer.size)
+            }
         }
     }
 
@@ -537,20 +812,158 @@ struct HomeView: View {
         .frame(width: size, height: size)
     }
 
-    private func deltaLabel(_ pct: Double) -> some View {
-        let isUp = pct >= 0
-        return HStack(spacing: 2) {
-            Image(systemName: isUp ? "arrow.up" : "arrow.down")
-                .font(.system(size: 8, weight: .bold))
-            Text(String(format: "%.0f%%", abs(pct)))
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
-        }
-        .foregroundStyle(isUp ? Color.fIncome : Color.fExpense)
-    }
-
     private func deltaPct(_ current: Double, _ previous: Double) -> Double? {
         guard previous != 0 else { return current != 0 ? 100 : nil }
         return ((current - previous) / abs(previous)) * 100
+    }
+
+    // MARK: - Approvals
+
+    private func approvalsPeriodLabel() -> String {
+        switch selectedPeriod {
+        case .today:
+            return "За \(ruDayLabel(todayViewDay))"
+        case .custom:
+            return "За \(ruDayLabel(customDate))"
+        case .selectMonth:
+            return "За \(ruMonthYearLabel(for: selectedMonth))"
+        case .monthToDate:
+            let cal = Calendar.current
+            if cal.isDate(mtdAnchorMonth, equalTo: Date(), toGranularity: .month) {
+                return "С начала месяца"
+            }
+            return "За \(ruMonthYearLabel(for: mtdAnchorMonth))"
+        }
+    }
+
+    private func ruDayLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.dateFormat = "d MMMM yyyy"
+        return f.string(from: date)
+    }
+
+    private func approvalsSection(_ stats: DashboardApprovalStats) -> some View {
+        sectionBlock("Согласования") {
+            FitnessCard {
+                Button {
+                    DashboardHaptics.lightImpact()
+                    detailSheet = .approvals(stats, approvalsPeriodLabel())
+                } label: {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(alignment: .center, spacing: 10) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.title3)
+                                .foregroundStyle(DashboardPalette.income)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(approvalsSummaryLine(stats))
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.leading)
+                                if stats.pendingInPeriod > 0, stats.pendingActionCount == 0 {
+                                    Text("\(stats.pendingInPeriod) ожидает в периоде")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            if stats.pendingActionCount > 0 {
+                                Text("\(stats.pendingActionCount)")
+                                    .font(.caption.weight(.bold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.orange.opacity(0.2))
+                                    .foregroundStyle(.orange)
+                                    .clipShape(Capsule())
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        if !stats.highlightedPendingItems.isEmpty {
+                            Divider()
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label(
+                                    stats.pendingActionCount > 0
+                                        ? "Требуется ваш ответ"
+                                        : "Ожидает согласования",
+                                    systemImage: "exclamationmark.circle.fill"
+                                )
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.orange)
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 10) {
+                                        ForEach(stats.highlightedPendingItems.prefix(6)) { item in
+                                            approvalPreviewCard(item) {
+                                                openApprovalItem(item)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                .buttonStyle(.dashboardPressable)
+            }
+        }
+    }
+
+    private func approvalsSummaryLine(_ stats: DashboardApprovalStats) -> String {
+        if stats.total == 0 {
+            if stats.pendingActionCount > 0 {
+                return "Ожидает вашего ответа: \(stats.pendingActionCount)"
+            }
+            let awaiting = stats.highlightedPendingItems.count
+            if awaiting > 0 {
+                return "\(awaiting) ожидает согласования"
+            }
+            return "Нет запросов за период"
+        }
+        var parts: [String] = ["\(stats.total) запросов", "\(stats.approved) согласовано"]
+        if stats.rejected > 0 {
+            parts.append("\(stats.rejected) отклонено")
+        }
+        if stats.pendingInPeriod > 0 {
+            parts.append("\(stats.pendingInPeriod) ожидает")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func openApprovalItem(_ item: DashboardApprovalItem) {
+        if item.conversationId > 0 {
+            chatService.navigateToConversation(id: item.conversationId)
+        } else {
+            chatService.pendingOpenChatsTab = true
+        }
+    }
+
+    private func approvalPreviewCard(_ item: DashboardApprovalItem, onTap: @escaping () -> Void) -> some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 6) {
+                if !item.formattedAmount.isEmpty {
+                    Text(item.formattedAmount)
+                        .font(.subheadline.weight(.bold).monospacedDigit())
+                }
+                if let desc = item.payload.description, !desc.isEmpty {
+                    Text(desc)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+                Text(item.senderName.isEmpty ? item.displayTitle : item.senderName)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            .padding(10)
+            .frame(width: 150, alignment: .leading)
+            .background(Color(.tertiarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Section Block
@@ -592,17 +1005,11 @@ struct HomeView: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(idx == 0 ? Color.fProfit.opacity(0.15) : Color(.tertiarySystemGroupedBackground))
+                    .fill(Color(.tertiarySystemGroupedBackground))
                     .frame(width: 34, height: 34)
-                if idx == 0 {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.fProfit)
-                } else {
-                    Text("\(idx + 1)")
-                        .font(.caption.weight(.bold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
+                Text("\(idx + 1)")
+                    .font(.caption.weight(.bold).monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -714,7 +1121,7 @@ struct HomeView: View {
                     Divider()
                         .padding(.vertical, 8)
                     Text(
-                        "Дата конца периода в последней выписке старше \(Self.bankBalanceStaleDays) дней — загрузите более свежую, чтобы остаток был актуальным."
+                        "Опорный остаток по счёту старше \(Self.bankBalanceStaleDays) дней — цифра на главной показана как ориентир. Загрузите свежую выписку."
                     )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -747,7 +1154,7 @@ struct HomeView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                Text(bankStatementUploadedCaption(iso: acc.lastStatementUploadedAt, hasStatement: acc.hasStatement))
+                Text(bankStatementUploadedCaption(iso: acc.lastStatementUploadedAt, hasStatement: acc.hasStatement, isStale: acc.isStale))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .lineLimit(2)
@@ -788,9 +1195,12 @@ struct HomeView: View {
         return String(t.suffix(4))
     }
 
-    private func bankStatementUploadedCaption(iso: String?, hasStatement: Bool) -> String {
+    private func bankStatementUploadedCaption(iso: String?, hasStatement: Bool, isStale: Bool = false) -> String {
         guard hasStatement else {
             return "Выписка ещё не загружена"
+        }
+        if isStale {
+            return "Выписка устарела — обновите для точного остатка"
         }
         guard let iso, !iso.isEmpty, let uploaded = Self.iso8601UploadWithFrac.date(from: iso)
                 ?? Self.iso8601UploadPlain.date(from: iso) else {
@@ -835,28 +1245,116 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Expense by bank account (оплаты расходов по счетам)
+    // MARK: - Expense by bank account (источники оплаты расходов)
+
+    private enum ExpensePaymentSourceGroup {
+        case bank
+        case personal
+
+        var title: String {
+            switch self {
+            case .bank: return "Банк"
+            case .personal: return "С личных карт"
+            }
+        }
+
+        var barColor: Color {
+            switch self {
+            case .bank: return Color.fExpense
+            case .personal: return Color.orange.opacity(0.9)
+            }
+        }
+
+        var isPersonal: Bool {
+            switch self {
+            case .bank: return false
+            case .personal: return true
+            }
+        }
+    }
 
     private func expenseByAccountSection(_ rows: [DashboardExpenseAccountRow]) -> some View {
         let total = rows.map(\.amount).reduce(0, +)
-        let maxAmount = max(rows.map(\.amount).max() ?? 1, 1)
+        let businessRows = rows.filter { !$0.isPersonal }
+        let personalRows = rows.filter(\.isPersonal)
+        let groups: [(ExpensePaymentSourceGroup, [DashboardExpenseAccountRow])] = [
+            (.bank, businessRows),
+            (.personal, personalRows),
+        ].filter { !$0.1.isEmpty }
+        let maxGroupAmount = max(groups.map { $0.1.map(\.amount).reduce(0, +) }.max() ?? 1, 1)
+
         return FitnessCard {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { idx, row in
-                NavigationLink(value: HomeLedgerRoute.expenseByAccountRow(row)) {
-                    expenseByAccountRowContent(row: row, maxAmount: maxAmount, ofTotal: total)
-                }
-                .buttonStyle(.dashboardPressable)
-                if idx < rows.count - 1 {
-                    Divider().padding(.leading, 12)
+            VStack(spacing: 0) {
+                ForEach(Array(groups.enumerated()), id: \.offset) { groupIdx, group in
+                    let (kind, groupRows) = group
+                    let groupTotal = groupRows.map(\.amount).reduce(0, +)
+                    let isExpanded = expenseSourceGroupExpanded(kind)
+                    let maxChildAmount = max(groupRows.map(\.amount).max() ?? 1, 1)
+
+                    VStack(spacing: 0) {
+                        Button {
+                            DashboardHaptics.lightImpact()
+                            toggleExpenseSourceGroup(kind)
+                        } label: {
+                            expenseAccountSourceRow(
+                                title: kind.title,
+                                icon: nil,
+                                amount: groupTotal,
+                                maxAmount: maxGroupAmount,
+                                ofTotal: total,
+                                barColor: kind.barColor,
+                                showsChevron: true,
+                                isExpanded: isExpanded
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Показать или скрыть счета")
+
+                        if isExpanded {
+                            ForEach(Array(groupRows.enumerated()), id: \.element.id) { rowIdx, row in
+                                Divider().padding(.leading, 44)
+                                NavigationLink(value: HomeLedgerRoute.expenseByAccountRow(row)) {
+                                    expenseByAccountRowContent(
+                                        row: row,
+                                        maxAmount: maxChildAmount,
+                                        ofTotal: groupTotal,
+                                        nested: true
+                                    )
+                                }
+                                .buttonStyle(.dashboardPressable)
+                            }
+                        }
+                    }
+
+                    if groupIdx < groups.count - 1 {
+                        Divider().padding(.leading, 12)
+                    }
                 }
             }
+            .animation(.easeInOut(duration: 0.22), value: expandedExpenseBankSources)
+            .animation(.easeInOut(duration: 0.22), value: expandedExpensePersonalSources)
+        }
+    }
+
+    private func expenseSourceGroupExpanded(_ group: ExpensePaymentSourceGroup) -> Bool {
+        switch group {
+        case .bank: return expandedExpenseBankSources
+        case .personal: return expandedExpensePersonalSources
+        }
+    }
+
+    private func toggleExpenseSourceGroup(_ group: ExpensePaymentSourceGroup) {
+        switch group {
+        case .bank: expandedExpenseBankSources.toggle()
+        case .personal: expandedExpensePersonalSources.toggle()
         }
     }
 
     private func expenseByAccountRowContent(
         row: DashboardExpenseAccountRow,
         maxAmount: Double,
-        ofTotal: Double
+        ofTotal: Double,
+        nested: Bool = false
     ) -> some View {
         let barColor = brandColor(for: row.bank)
         let fallbackIcon = row.cashOnly
@@ -868,10 +1366,10 @@ struct HomeView: View {
                     bankName: row.bank,
                     fallbackSystemName: fallbackIcon,
                     fallbackTint: barColor,
-                    size: 24
+                    size: nested ? 22 : 24
                 )
                 Text(row.label)
-                    .font(.subheadline)
+                    .font(nested ? .caption.weight(.medium) : .subheadline)
                     .lineLimit(2)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)
@@ -879,17 +1377,15 @@ struct HomeView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.tertiary)
                 Text(fmt(row.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                Text(pct(row.amount, of: ofTotal))
-                    .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                    .frame(width: 30, alignment: .trailing)
             }
             ProgressBarView(ratio: row.amount / maxAmount, color: barColor)
-            Text("доля от оплат расходов \(pct(row.amount, of: ofTotal))")
+            Text("доля в группе \(pct(row.amount, of: ofTotal))")
                 .font(.caption2)
                 .foregroundStyle(.quaternary)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, nested ? 4 : 6)
+        .padding(.leading, nested ? 28 : 0)
     }
 
     // MARK: - Expense account source (ИП vs личные) — запасной вариант без `expense_by_account`
@@ -903,24 +1399,30 @@ struct HomeView: View {
             VStack(spacing: 0) {
                 NavigationLink(value: HomeLedgerRoute.expenseByAccountSource(isPersonal: false)) {
                     expenseAccountSourceRow(
-                        title: "Со счетов ИП",
-                        icon: "building.columns.fill",
+                        title: "Банк",
+                        icon: nil,
                         amount: ip,
                         maxAmount: maxAmount,
                         ofTotal: splitTotal,
-                        barColor: Color.fExpense
+                        barColor: Color.fExpense,
+                        showsChevron: true,
+                        isExpanded: false,
+                        navigationChevron: true
                     )
                 }
                 .buttonStyle(.dashboardPressable)
                 Divider().padding(.leading, 12)
                 NavigationLink(value: HomeLedgerRoute.expenseByAccountSource(isPersonal: true)) {
                     expenseAccountSourceRow(
-                        title: "С своих счетов",
-                        icon: "person.fill",
+                        title: "С личных карт",
+                        icon: nil,
                         amount: own,
                         maxAmount: maxAmount,
                         ofTotal: splitTotal,
-                        barColor: Color.orange.opacity(0.9)
+                        barColor: Color.orange.opacity(0.9),
+                        showsChevron: true,
+                        isExpanded: false,
+                        navigationChevron: true
                     )
                 }
                 .buttonStyle(.dashboardPressable)
@@ -930,29 +1432,33 @@ struct HomeView: View {
 
     private func expenseAccountSourceRow(
         title: String,
-        icon: String,
+        icon: String?,
         amount: Double,
         maxAmount: Double,
         ofTotal: Double,
-        barColor: Color
+        barColor: Color,
+        showsChevron: Bool,
+        isExpanded: Bool,
+        navigationChevron: Bool = false
     ) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.subheadline)
-                    .foregroundStyle(barColor)
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.subheadline)
+                        .foregroundStyle(barColor)
+                }
                 Text(title)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.medium))
                     .lineLimit(2)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                if showsChevron {
+                    Image(systemName: navigationChevron ? "chevron.right" : (isExpanded ? "chevron.up" : "chevron.down"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
                 Text(fmt(amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                Text(pct(amount, of: ofTotal))
-                    .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                    .frame(width: 30, alignment: .trailing)
             }
             ProgressBarView(ratio: amount / maxAmount, color: barColor)
             Text("доля от оплат расходов \(pct(amount, of: ofTotal))")
@@ -999,12 +1505,54 @@ struct HomeView: View {
                         .foregroundStyle(.tertiary)
                 }
                 Text(fmt(cat.amount)).font(.subheadline.monospacedDigit().weight(.semibold))
-                Text(pct(cat.amount, of: total))
-                    .font(.caption2.monospacedDigit()).foregroundStyle(.tertiary)
-                    .frame(width: 30, alignment: .trailing)
             }
             ProgressBarView(ratio: cat.amount / maxAmount, color: .fExpense)
             Text("от продаж \(pct(cat.amount, of: revenue))")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Expenses by branch (компании из накладных)
+
+    private func expensesByBranchSection(_ branches: [DashboardBranchExpense], totalExpense: Double) -> some View {
+        let maxAmount = max(branches.map(\.amount).max() ?? 1, 1)
+        let total = branches.map(\.amount).reduce(0, +)
+        return FitnessCard {
+            ForEach(Array(branches.enumerated()), id: \.element.id) { idx, branch in
+                NavigationLink(value: HomeLedgerRoute.expenseByBranch(branchId: branch.branchId, title: branch.name)) {
+                    expenseBranchRowContent(branch: branch, maxAmount: maxAmount, total: total)
+                }
+                .buttonStyle(.dashboardPressable)
+                .padding(.vertical, 4)
+                if idx < branches.count - 1 { Divider() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func expenseBranchRowContent(branch: DashboardBranchExpense, maxAmount: Double, total: Double) -> some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 8) {
+                if branch.branchId != nil {
+                    Image(systemName: "building.2.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Color.fExpense)
+                }
+                Text(branch.name)
+                    .font(.subheadline)
+                    .lineLimit(2)
+                    .foregroundStyle(.primary)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                Text(fmt(branch.amount))
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+            }
+            ProgressBarView(ratio: branch.amount / maxAmount, color: .fExpense)
+            Text("доля от расходов \(pct(branch.amount, of: total))")
                 .font(.caption2)
                 .foregroundStyle(.quaternary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1015,61 +1563,9 @@ struct HomeView: View {
 
     private func chartSection(_ points: [ChartPoint]) -> some View {
         FitnessCard {
-            HStack(spacing: 14) {
-                HStack(spacing: 4) {
-                    Circle().fill(Color.fIncome).frame(width: 7, height: 7)
-                    Text("Доход").font(.caption).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 4) {
-                    Circle().fill(Color.fExpense).frame(width: 7, height: 7)
-                    Text("Расход").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                Text("Тап по столбцу")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+            DashboardDynamicsChart(points: points) { point in
+                detailSheet = .chartDay(point)
             }
-            .padding(.bottom, 4)
-
-            let maxVal = points.map { max($0.income, $0.expense) }.max() ?? 1
-            /// Мало столбцов — фиксированная ширина и центрирование (как в компактных чартах Apple), не на всю ширину экрана.
-            let compactBarLayout = points.count <= 7
-            let barColumnWidth: CGFloat = 36
-
-            HStack(alignment: .bottom, spacing: 3) {
-                if compactBarLayout {
-                    Spacer(minLength: 0)
-                }
-                ForEach(points) { pt in
-                    Button {
-                        DashboardHaptics.lightImpact()
-                        detailSheet = .chartDay(pt)
-                    } label: {
-                        VStack(spacing: 2) {
-                            Spacer(minLength: 0)
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.fIncome)
-                                .frame(height: max(2, CGFloat(pt.income / maxVal) * 70))
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(Color.fExpense)
-                                .frame(height: max(2, CGFloat(pt.expense / maxVal) * 70))
-                            Text(shortDate(pt.date))
-                                .font(.system(size: 7, weight: .medium))
-                                .foregroundStyle(.quaternary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        .frame(width: compactBarLayout ? barColumnWidth : nil)
-                        .frame(maxWidth: compactBarLayout ? barColumnWidth : .infinity)
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.dashboardPressable)
-                }
-                if compactBarLayout {
-                    Spacer(minLength: 0)
-                }
-            }
-            .frame(height: 100)
         }
     }
 
@@ -1267,6 +1763,19 @@ struct HomeView: View {
 
     // MARK: - Data
 
+    private func approvalStatsLoadOptional(period: String, date: String?) async -> DashboardApprovalStats? {
+        try? await APIService.shared.approvalStats(period: period, date: date)
+    }
+
+    private func resolveApprovalStats(
+        dashboardStats: DashboardApprovalStats?,
+        fallbackStats: DashboardApprovalStats?,
+        pending: [PendingApprovalItem]
+    ) -> DashboardApprovalStats {
+        let base = dashboardStats ?? fallbackStats ?? .empty
+        return base.enriched(withPending: pending)
+    }
+
     private func loadData() { Task { await loadDataAsync() } }
 
     private func loadDataAsync() async {
@@ -1288,27 +1797,37 @@ struct HomeView: View {
             case .monthToDate:
                 dateStr = monthFirstDayISO(from: mtdAnchorMonth)
             }
-            async let dashboardTask = APIService.shared.dashboard(period: selectedPeriod.apiValue, date: dateStr)
+            let period = selectedPeriod.apiValue
+            async let dashboardTask = APIService.shared.dashboard(period: period, date: dateStr)
             async let branchesList = branchesLoadOptional()
             async let teamSnap = teamLoadOptional()
+            async let pendingTask = chatService.loadPendingApprovals()
+            async let approvalStatsTask = approvalStatsLoadOptional(period: period, date: dateStr)
             let loaded = try await dashboardTask
+            _ = await pendingTask
             let br = await branchesList
             let tm = await teamSnap
+            let extraStats = await approvalStatsTask
             let picked = DashboardDisplayTax.pickPrimaryBranch(
                 branches: br ?? [],
                 team: tm,
                 userEmail: appState.user?.email
             )
+            let resolvedStats = resolveApprovalStats(
+                dashboardStats: loaded.approvalStats,
+                fallbackStats: extraStats,
+                pending: chatService.pendingApprovals
+            )
             await MainActor.run {
                 primaryBranch = picked
                 dashboard = loaded
+                approvalStats = resolvedStats
                 if loaded.bankAccounts?.isEmpty != false {
                     expandedBankAccountsUnderOstatok = false
                 }
             }
-        } catch is CancellationError {
-            // Потянули refresh или сменили вкладку — не показываем ошибку.
         } catch {
+            if error.finside_isCancellationLike { return }
             errorMessage = error.localizedDescription
         }
     }
@@ -1328,41 +1847,47 @@ struct HomeView: View {
     private func fmtShort(_ v: Double) -> String { DashboardMoney.formatShortTenge(v) }
 
     private func pct(_ v: Double, of total: Double) -> String { DashboardMoney.percent(v, of: total) }
-
-    private func shortDate(_ iso: String) -> String { DashboardMoney.shortDateLabel(iso) }
 }
 
 // MARK: - MetricRow (Fitness-style)
 
 private struct MetricRow: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     let label: String
     let value: Double
     let tint: Color
     var delta: Double?
     var subtitle: String? = nil
     var showApproximateBadge: Bool = false
-    /// Белый текст на тёмном фоне (колонки «Продажи» / «Расход» на главной).
-    var lightOnDark: Bool = false
     /// Цвет крупной суммы; если `nil` — как `valueColor`.
     var amountColor: Color? = nil
     var onTap: (() -> Void)? = nil
 
+    private var usesDarkMetricCard: Bool {
+        colorScheme == .dark
+    }
+
     private var cardFill: Color {
-        lightOnDark
+        usesDarkMetricCard
             ? Color(red: 0.14, green: 0.14, blue: 0.16)
             : Color(.secondarySystemGroupedBackground)
     }
 
     private var labelColor: Color {
-        lightOnDark ? .white : tint
+        usesDarkMetricCard ? .white : Color(.secondaryLabel)
     }
 
     private var valueColor: Color {
-        lightOnDark ? .white : .primary
+        usesDarkMetricCard ? .white : .primary
     }
 
     private var tertiaryOnCard: Color {
-        lightOnDark ? Color.white.opacity(0.62) : Color(.tertiaryLabel)
+        usesDarkMetricCard ? Color.white.opacity(0.62) : Color(.tertiaryLabel)
+    }
+
+    private var deltaColor: Color {
+        usesDarkMetricCard ? Color.white.opacity(0.85) : Color(.secondaryLabel)
     }
 
     private var mainAmountColor: Color {
@@ -1378,7 +1903,7 @@ private struct MetricRow: View {
                 if showApproximateBadge {
                     Text("≈")
                         .font(.caption2.weight(.bold))
-                        .foregroundStyle(lightOnDark ? Color.white.opacity(0.7) : .secondary)
+                        .foregroundStyle(usesDarkMetricCard ? Color.white.opacity(0.7) : .secondary)
                         .accessibilityLabel("Ориентировочная оценка")
                 }
                 Spacer(minLength: 0)
@@ -1407,7 +1932,7 @@ private struct MetricRow: View {
                     Text(String(format: "%.0f%%", abs(delta)))
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
                 }
-                .foregroundStyle(lightOnDark ? .white : (isUp ? Color.fIncome : Color.fExpense))
+                .foregroundStyle(deltaColor)
             } else {
                 Text(" ")
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -1509,12 +2034,20 @@ private struct FitnessCard<Content: View>: View {
 // MARK: - Shimmer
 
 private struct ShimmerModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var phase: CGFloat = 0
+
     func body(content: Content) -> some View {
         content.overlay(
-            LinearGradient(colors: [.clear, .white.opacity(0.12), .clear],
-                           startPoint: .init(x: phase - 0.5, y: 0.5),
-                           endPoint: .init(x: phase + 0.5, y: 0.5))
+            LinearGradient(
+                colors: [
+                    .clear,
+                    Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.06),
+                    .clear,
+                ],
+                startPoint: .init(x: phase - 0.5, y: 0.5),
+                endPoint: .init(x: phase + 0.5, y: 0.5)
+            )
             .blendMode(.sourceAtop)
         ).onAppear {
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) { phase = 1.5 }

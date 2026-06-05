@@ -13,7 +13,9 @@ final class WebSocketClient {
 
     var onMessage: ((ChatMessage) -> Void)?
     var onApprovalUpdate: ((ChatMessage) -> Void)?
+    var onHistoryCleared: ((Int) -> Void)?
     var onTyping: ((Int, String) -> Void)?
+    var onNotification: ((ChatNotificationItem) -> Void)?
 
     private let wsBaseURL = BackendEnvironment.chatWebSocketURL
 
@@ -126,10 +128,22 @@ final class WebSocketClient {
                let msg = try? JSONDecoder().decode(ChatMessage.self, from: msgJSON) {
                 onApprovalUpdate?(msg)
             }
+        case "history_cleared":
+            if let convId = json["conversation_id"] as? Int {
+                onHistoryCleared?(convId)
+            } else if let num = json["conversation_id"] as? NSNumber {
+                onHistoryCleared?(num.intValue)
+            }
         case "typing":
             if let convId = json["conversation_id"] as? Int,
                let userName = json["user_name"] as? String {
                 onTyping?(convId, userName)
+            }
+        case "notification_new":
+            if let notifData = json["notification"],
+               let notifJSON = try? JSONSerialization.data(withJSONObject: notifData),
+               let notif = try? JSONDecoder().decode(ChatNotificationItem.self, from: notifJSON) {
+                onNotification?(notif)
             }
         default:
             break

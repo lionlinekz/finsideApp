@@ -14,6 +14,8 @@ enum HomeLedgerRoute: Hashable {
     case expenseByAccountRow(DashboardExpenseAccountRow)
     /// Запасной вариант, если дашборд без `expense_by_account`: все ИП / все личные.
     case expenseByAccountSource(isPersonal: Bool)
+    /// Расходы по конкретному филиалу (`branchId == nil` — «Без филиала»).
+    case expenseByBranch(branchId: Int?, title: String)
 }
 
 struct LedgerListView: View {
@@ -70,7 +72,8 @@ struct LedgerListView: View {
         case .expenseCategory(_, let t): return t
         case .expenseByAccountRow(let row): return row.label
         case .expenseByAccountSource(let isPersonal):
-            return isPersonal ? "С своих счетов" : "Со счетов ИП"
+            return isPersonal ? "С личных карт" : "Банк"
+        case .expenseByBranch(_, let t): return t
         }
     }
 
@@ -220,6 +223,20 @@ struct LedgerListView: View {
                     offset: offset,
                     limit: 50
                 )
+            case .expenseByBranch(let branchId, _):
+                page = try await APIService.shared.dashboardExpenseLines(
+                    period: period,
+                    date: date,
+                    categoryId: nil,
+                    personalMoney: nil,
+                    bankStatementUploadId: nil,
+                    paymentBank: nil,
+                    cashOnly: false,
+                    branchId: branchId,
+                    branchNone: branchId == nil,
+                    offset: offset,
+                    limit: 50
+                )
             }
             totalCount = page.count
             if append {
@@ -229,6 +246,7 @@ struct LedgerListView: View {
             }
             nextOffset = page.nextOffset
         } catch {
+            if error.finside_isCancellationLike { return }
             if !append { errorMessage = error.localizedDescription }
         }
     }

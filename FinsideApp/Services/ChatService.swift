@@ -5,13 +5,26 @@ import Foundation
 final class ChatService {
     var conversations: [Conversation] = []
     var pendingApprovals: [PendingApprovalItem] = []
+    /// Лента push-уведомлений, прилетевших по WebSocket (новые запросы,
+    /// результаты согласований и т.п.). Используется для toast/баннеров в UI.
+    var liveNotifications: [ChatNotificationItem] = []
     var isLoading = false
     var error: String?
+
+    /// ID запросов на согласование, по которым прямо сейчас идёт сетевой
+    /// вызов. Используется ячейкой `ApprovalWidgetCell`, чтобы показать
+    /// спиннер и заблокировать кнопки на время запроса, и для отката
+    /// оптимистичного апдейта, если сервер вернёт ошибку.
+    var inFlightApprovals: Set<Int> = []
+    /// Загрузка квитанции по message id.
+    var inFlightReceiptUploads: Set<Int> = []
+    /// Отметка «деньги отправлены» по message id.
+    var inFlightMoneySent: Set<Int> = []
 
     private(set) var totalUnreadCount = 0
 
     private let ws = WebSocketClient()
-    private var messagesByConversation: [Int: [ChatMessage]] = [:]
+    var messagesByConversation: [Int: [ChatMessage]] = [:]
 
     init() {
         ws.onMessage = { [weak self] msg in
@@ -22,6 +35,16 @@ final class ChatService {
         ws.onApprovalUpdate = { [weak self] msg in
             Task { @MainActor in
                 self?.handleApprovalUpdate(msg)
+            }
+        }
+        ws.onHistoryCleared = { [weak self] conversationId in
+            Task { @MainActor in
+                self?.applyHistoryCleared(conversationId: conversationId)
+            }
+        }
+        ws.onNotification = { [weak self] notif in
+            Task { @MainActor in
+                self?.handleIncomingNotification(notif)
             }
         }
     }
@@ -49,7 +72,9 @@ final class ChatService {
             conversations = try await APIService.shared.chatConversations()
             recalcUnread()
         } catch {
-            self.error = error.localizedDescription
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
         }
         isLoading = false
     }
@@ -74,6 +99,7 @@ final class ChatService {
             }
             return response.hasMore
         } catch {
+            if error.finside_isCancellationLike { return false }
             self.error = error.localizedDescription
             return false
         }
@@ -90,6 +116,34 @@ final class ChatService {
         }
     }
 
+    /// Отправить фото с опциональной подписью. UI должен предварительно сжать
+    /// изображение до JPEG, чтобы минимизировать трафик.
+    @discardableResult
+    func sendImages(
+        conversationId: Int,
+        images: [(data: Data, fileName: String, mimeType: String)],
+        caption: String
+    ) async -> Bool {
+        guard !images.isEmpty else { return false }
+        do {
+            let msg = try await APIService.shared.sendChatImages(
+                conversationId: conversationId,
+                images: images,
+                caption: caption
+            )
+            appendMessage(msg, to: conversationId)
+            if let idx = conversations.firstIndex(where: { $0.id == conversationId }) {
+                conversations[idx].lastMessage = msg
+            }
+            return true
+        } catch {
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+            return false
+        }
+    }
+
     func markRead(conversationId: Int) async {
         do {
             try await APIService.shared.markConversationRead(conversationId: conversationId)
@@ -101,6 +155,19 @@ final class ChatService {
         } catch {}
     }
 
+    /// Очистить историю чата на сервере и локально (как «Очистить чат» в WhatsApp).
+    func clearConversationHistory(conversationId: Int) async {
+        error = nil
+        do {
+            try await APIService.shared.clearConversationHistory(conversationId: conversationId)
+            applyHistoryCleared(conversationId: conversationId)
+        } catch {
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
     // MARK: - Approvals
 
     func loadPendingApprovals() async {
@@ -110,22 +177,141 @@ final class ChatService {
     }
 
     func approve(messageId: Int) async {
-        do {
-            let updated = try await APIService.shared.approveMessage(messageId: messageId)
-            replaceMessage(updated)
-            pendingApprovals.removeAll { $0.id == messageId }
-        } catch {
-            self.error = error.localizedDescription
-        }
+        await resolveApproval(messageId: messageId, newStatus: .approved)
     }
 
     func reject(messageId: Int) async {
+        await resolveApproval(messageId: messageId, newStatus: .rejected)
+    }
+
+    /// Управляющий отмечает, что деньги отправлены инициатору.
+    func markMoneySent(messageId: Int) async -> Bool {
+        inFlightMoneySent.insert(messageId)
+        defer { inFlightMoneySent.remove(messageId) }
         do {
-            let updated = try await APIService.shared.rejectMessage(messageId: messageId)
+            let updated = try await APIService.shared.markMoneySent(messageId: messageId)
             replaceMessage(updated)
-            pendingApprovals.removeAll { $0.id == messageId }
+            return true
         } catch {
-            self.error = error.localizedDescription
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+            return false
+        }
+    }
+
+    /// Прикрепить Kaspi PDF к согласованному запросу инициатора.
+    func attachReceipt(messageId: Int, fileData: Data, fileName: String) async -> Bool {
+        inFlightReceiptUploads.insert(messageId)
+        defer { inFlightReceiptUploads.remove(messageId) }
+        do {
+            let updated = try await APIService.shared.attachApprovalReceipt(
+                messageId: messageId,
+                fileData: fileData,
+                fileName: fileName
+            )
+            replaceMessage(updated)
+            NotificationCenter.default.post(name: .finsideLedgerDidChange, object: nil)
+            return true
+        } catch {
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+            return false
+        }
+    }
+
+    /// Единая реализация согласовать/отклонить с оптимистичным апдейтом:
+    /// мы сразу перерисовываем ячейку в нужный статус, ставим маркер
+    /// in-flight (на нём ячейка показывает спиннер), а затем подтверждаем
+    /// у сервера. Если сервер вернул ошибку — откатываем статус обратно.
+    private func resolveApproval(messageId: Int, newStatus: ApprovalStatus) async {
+        let previousStatus = findApprovalStatus(for: messageId)
+        guard previousStatus != newStatus else { return }
+
+        inFlightApprovals.insert(messageId)
+        updateApprovalStatus(messageId: messageId, status: newStatus)
+        pendingApprovals.removeAll { $0.id == messageId }
+
+        do {
+            let updated: ChatMessage
+            switch newStatus {
+            case .approved:
+                updated = try await APIService.shared.approveMessage(messageId: messageId)
+            case .rejected:
+                updated = try await APIService.shared.rejectMessage(messageId: messageId)
+            case .pending:
+                inFlightApprovals.remove(messageId)
+                return
+            }
+            replaceMessage(updated)
+            inFlightApprovals.remove(messageId)
+        } catch {
+            updateApprovalStatus(messageId: messageId, status: previousStatus)
+            inFlightApprovals.remove(messageId)
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func findApprovalStatus(for messageId: Int) -> ApprovalStatus? {
+        for (_, msgs) in messagesByConversation {
+            if let m = msgs.first(where: { $0.id == messageId }) {
+                return m.approvalStatus
+            }
+        }
+        return nil
+    }
+
+    /// Локально обновить статус согласования у сообщения с заданным id.
+    /// Полная переустановка массива гарантирует, что наблюдаемый словарь
+    /// `messagesByConversation` корректно сигналит SwiftUI о мутации, а
+    /// SwiftUI пересобирает ячейку.
+    private func updateApprovalStatus(messageId: Int, status: ApprovalStatus?) {
+        for (convId, msgs) in messagesByConversation {
+            guard let idx = msgs.firstIndex(where: { $0.id == messageId }) else {
+                continue
+            }
+            var copy = msgs
+            copy[idx].approvalStatus = status
+            messagesByConversation[convId] = copy
+            if let lastIdx = conversations.firstIndex(where: { $0.id == convId }),
+               conversations[lastIdx].lastMessage?.id == messageId {
+                conversations[lastIdx].lastMessage?.approvalStatus = status
+            }
+            return
+        }
+    }
+
+    /// Создать запрос на согласование. Сервер:
+    /// — найдёт/создаст чат инициатора с управляющими/владельцами;
+    /// — опубликует в нём `approval_request` со статусом `pending`;
+    /// — разошлёт согласующим push-уведомления.
+    /// Возвращает целевой чат, чтобы UI мог в него перейти.
+    @discardableResult
+    func createApprovalRequest(_ body: CreateApprovalRequestBody) async -> Conversation? {
+        do {
+            let resp = try await APIService.shared.createApprovalRequest(body)
+            // Обновляем локальный кэш чатов и сообщений.
+            if let idx = conversations.firstIndex(where: { $0.id == resp.conversation.id }) {
+                var existing = conversations[idx]
+                existing.lastMessage = resp.message
+                conversations[idx] = existing
+                let conv = conversations.remove(at: idx)
+                conversations.insert(conv, at: 0)
+            } else {
+                var conv = resp.conversation
+                conv.lastMessage = resp.message
+                conversations.insert(conv, at: 0)
+            }
+            appendMessage(resp.message, to: resp.conversation.id)
+            return resp.conversation
+        } catch {
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+            return nil
         }
     }
 
@@ -140,6 +326,24 @@ final class ChatService {
             return conv
         } catch {
             self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Открыть/создать 1-1 личный чат с пользователем и обновить локальный список.
+    func openDirectChat(with userId: Int) async -> Conversation? {
+        do {
+            let resp = try await APIService.shared.openDirectChat(userId: userId)
+            if let idx = conversations.firstIndex(where: { $0.id == resp.conversation.id }) {
+                conversations[idx] = resp.conversation
+            } else {
+                conversations.insert(resp.conversation, at: 0)
+            }
+            return resp.conversation
+        } catch {
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
             return nil
         }
     }
@@ -204,6 +408,31 @@ final class ChatService {
     private func handleApprovalUpdate(_ msg: ChatMessage) {
         replaceMessage(msg)
         pendingApprovals.removeAll { $0.id == msg.id }
+    }
+
+    private func handleIncomingNotification(_ notif: ChatNotificationItem) {
+        // Простой инвариант: не более 50 уведомлений в ленте.
+        liveNotifications.removeAll { $0.stableId == notif.stableId }
+        liveNotifications.insert(notif, at: 0)
+        if liveNotifications.count > 50 {
+            liveNotifications = Array(liveNotifications.prefix(50))
+        }
+        // Если уведомление — про новый запрос на согласование, подтягиваем
+        // pending-список и список чатов, чтобы UI обновился сразу.
+        Task {
+            await loadPendingApprovals()
+            await loadConversations()
+        }
+    }
+
+    private func applyHistoryCleared(conversationId: Int) {
+        messagesByConversation[conversationId] = []
+        pendingApprovals.removeAll { $0.conversationId == conversationId }
+        if let idx = conversations.firstIndex(where: { $0.id == conversationId }) {
+            conversations[idx].lastMessage = nil
+            conversations[idx].unreadCount = 0
+        }
+        recalcUnread()
     }
 
     private func appendMessage(_ msg: ChatMessage, to conversationId: Int) {
