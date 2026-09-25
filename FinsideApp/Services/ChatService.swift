@@ -16,6 +16,8 @@ final class ChatService {
     /// спиннер и заблокировать кнопки на время запроса, и для отката
     /// оптимистичного апдейта, если сервер вернёт ошибку.
     var inFlightApprovals: Set<Int> = []
+    /// Локальный статус для инвойсов/превью без чат-зеркала.
+    var localApprovalStatuses: [Int: ApprovalStatus] = [:]
     /// Загрузка квитанции по message id.
     var inFlightReceiptUploads: Set<Int> = []
     /// Отметка «деньги отправлены» по message id.
@@ -176,12 +178,130 @@ final class ChatService {
         } catch {}
     }
 
+    /// Сообщение согласования для модалки действий: сначала кэш, затем подгрузка чата.
+    func approvalMessage(
+        messageId: Int,
+        conversationId: Int,
+        fallback: ApprovalSnapshot? = nil
+    ) async -> ChatMessage? {
+        if let cached = findMessage(id: messageId, conversationId: conversationId) {
+            return applyLocalApprovalStatus(to: cached)
+        }
+        for (_, msgs) in messagesByConversation {
+            if let msg = msgs.first(where: { $0.id == messageId }) {
+                return applyLocalApprovalStatus(to: msg)
+            }
+        }
+        if let fallback {
+            return applyLocalApprovalStatus(
+                to: fallback.asMessage(messageId: messageId, conversationId: conversationId)
+            )
+        }
+        guard conversationId > 0 else { return nil }
+
+        var hasMore = await loadMessages(conversationId: conversationId)
+        if let msg = findMessage(id: messageId, conversationId: conversationId) {
+            return applyLocalApprovalStatus(to: msg)
+        }
+
+        var before = messagesByConversation[conversationId]?.first?.id
+        for _ in 0..<8 where hasMore {
+            guard let cursor = before else { break }
+            hasMore = await loadMessages(conversationId: conversationId, before: cursor)
+            if let msg = findMessage(id: messageId, conversationId: conversationId) {
+                return applyLocalApprovalStatus(to: msg)
+            }
+            before = messagesByConversation[conversationId]?.first?.id
+            if before == cursor { break }
+        }
+        return nil
+    }
+
+    private func applyLocalApprovalStatus(to message: ChatMessage) -> ChatMessage {
+        guard let status = localApprovalStatuses[message.id] else { return message }
+        var copy = message
+        copy.approvalStatus = status
+        return copy
+    }
+
+    private func findMessage(id messageId: Int, conversationId: Int) -> ChatMessage? {
+        if let msg = messagesByConversation[conversationId]?.first(where: { $0.id == messageId }) {
+            return msg
+        }
+        if let conv = conversations.first(where: { $0.id == conversationId }),
+           let last = conv.lastMessage,
+           last.id == messageId {
+            return last
+        }
+        return nil
+    }
+
     func approve(messageId: Int) async {
         await resolveApproval(messageId: messageId, newStatus: .approved)
     }
 
     func reject(messageId: Int) async {
         await resolveApproval(messageId: messageId, newStatus: .rejected)
+    }
+
+    func resolveApproval(message: ChatMessage, newStatus: ApprovalStatus) async {
+        if message.isInvoiceOnly, let invoiceId = message.linkedInvoiceId {
+            await resolveInvoiceApproval(
+                messageId: message.id,
+                invoiceId: invoiceId,
+                tenantSchema: message.payload.tenantSchema,
+                newStatus: newStatus
+            )
+            return
+        }
+        switch newStatus {
+        case .approved:
+            await approve(messageId: message.id)
+        case .rejected:
+            await reject(messageId: message.id)
+        case .pending:
+            break
+        }
+    }
+
+    private func resolveInvoiceApproval(
+        messageId: Int,
+        invoiceId: Int,
+        tenantSchema: String?,
+        newStatus: ApprovalStatus
+    ) async {
+        let previousStatus = localApprovalStatuses[messageId] ?? .pending
+        guard previousStatus != newStatus else { return }
+
+        inFlightApprovals.insert(messageId)
+        localApprovalStatuses[messageId] = newStatus
+        pendingApprovals.removeAll { $0.id == messageId }
+
+        do {
+            switch newStatus {
+            case .approved:
+                try await APIService.shared.approveInvoice(
+                    invoiceId: invoiceId,
+                    tenantSchema: tenantSchema
+                )
+            case .rejected:
+                try await APIService.shared.rejectInvoice(
+                    invoiceId: invoiceId,
+                    tenantSchema: tenantSchema
+                )
+            case .pending:
+                inFlightApprovals.remove(messageId)
+                return
+            }
+            inFlightApprovals.remove(messageId)
+            NotificationCenter.default.post(name: .finsideLedgerDidChange, object: nil)
+        } catch {
+            localApprovalStatuses[messageId] = previousStatus
+            inFlightApprovals.remove(messageId)
+            if !error.finside_isCancellationLike {
+                self.error = error.localizedDescription
+            }
+        }
     }
 
     /// Управляющий отмечает, что деньги отправлены инициатору.

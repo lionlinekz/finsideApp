@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import UIKit
 
 private enum ShareExtensionDefaults {
-    static let suite = "group.kz.finside.app"
+    static let suite = "group.kz.finside.app.shared"
     /// Должно совпадать с `ShareImportPendingNavigation.userDefaultsKey` в основном приложении.
     static let pendingConversationKey = "pending_share_open_conversation_id"
 }
@@ -53,7 +53,7 @@ struct ShareView: View {
         #endif
     }
 
-    private static let appGroupSuite = "group.kz.finside.app"
+    private static let appGroupSuite = "group.kz.finside.app.shared"
     private static let sharedAccessTokenKey = "shared_access_token"
 
     let extensionContext: NSExtensionContext?

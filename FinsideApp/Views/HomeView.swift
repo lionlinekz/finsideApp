@@ -127,6 +127,13 @@ struct HomeView: View {
     @State private var expandedExpenseBankSources = false
     @State private var expandedExpensePersonalSources = false
     @State private var showAddExpense = false
+    /// Касса, для которой открыта форма ввода остатка (nil — форма закрыта).
+    @State private var cashEntryTarget: CashRegister?
+
+    /// Инициатору не показываем доходы, расходы и остатки на главной.
+    private var canViewFinancialData: Bool {
+        appState.user?.canViewFinancialDashboard ?? true
+    }
 
     /// Мягкое ограничение как у растягивания у края экрана.
     private static func swipeRubberNudge(dx: CGFloat) -> CGFloat {
@@ -232,10 +239,16 @@ struct HomeView: View {
                 Group {
                     if let err = errorMessage, !isLoading {
                         errorView(err)
-                    } else if isLoading, dashboard == nil {
+                    } else if isLoading {
                         loadingPlaceholder
                     } else if let dashboard {
                         contentInner(dashboard, approvalStats: approvalStats)
+                            .offset(x: periodSwipeNudgeX)
+                            .overlay {
+                                PeriodSwipeGlow(progress: periodSwipeSheenPhase)
+                            }
+                    } else if !canViewFinancialData {
+                        initiatorHomeContent(approvalStats)
                             .offset(x: periodSwipeNudgeX)
                             .overlay {
                                 PeriodSwipeGlow(progress: periodSwipeSheenPhase)
@@ -281,6 +294,13 @@ struct HomeView: View {
                     loadData()
                 }
                 .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
+            .sheet(item: $cashEntryTarget) { register in
+                CashBalanceEntrySheet(register: register) {
+                    loadData()
+                }
+                .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
             }
             .sheet(item: $detailSheet) { sheet in
@@ -456,58 +476,74 @@ struct HomeView: View {
 
     // MARK: - Content
 
+    /// Главная инициатора: только блок согласований (без финансового дашборда).
+    private func initiatorHomeContent(_ approvalStats: DashboardApprovalStats) -> some View {
+        VStack(spacing: 20) {
+            approvalsSection(approvalStats)
+            Color.clear.frame(height: 32)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .contentShape(Rectangle())
+    }
+
     /// Контент дашборда без внешних отступов (их даёт родитель ScrollView для жеста).
     private func contentInner(_ d: DashboardResponse, approvalStats: DashboardApprovalStats) -> some View {
         let tax = DashboardDisplayTax.compute(summary: d.summary, primaryBranch: primaryBranch)
         return VStack(spacing: 20) {
-            heroSection(
-                d.summary,
-                comparison: d.comparison,
-                taxDisplay: tax,
-                ringTargets: d.ringTargets,
-                periodType: d.period.type,
-                cashCommitments: d.cashCommitments,
-                bankAccounts: d.bankAccounts,
-                showBankAccountsExpanded: $expandedBankAccountsUnderOstatok
-            )
+            if canViewFinancialData {
+                heroSection(
+                    d.summary,
+                    comparison: d.comparison,
+                    taxDisplay: tax,
+                    ringTargets: d.ringTargets,
+                    periodType: d.period.type,
+                    cashCommitments: d.cashCommitments,
+                    bankAccounts: d.bankAccounts,
+                    cashRegisters: d.cashRegisters,
+                    canUploadBalance: d.canUploadBalance ?? false,
+                    showBankAccountsExpanded: $expandedBankAccountsUnderOstatok
+                )
+            }
 
             approvalsSection(approvalStats)
 
-            if !d.managers.isEmpty {
-                sectionBlock("Менеджеры") { managersSection(d.managers, revenue: d.summary.revenue) }
-            }
-            if !d.points.isEmpty {
-                sectionBlock("Точки продаж") { pointsSection(d.points, revenue: d.summary.revenue) }
-            }
-            if let expenseAccounts = d.expenseByAccount, !expenseAccounts.isEmpty {
-                sectionBlock("Источники оплаты расходов") { expenseByAccountSection(expenseAccounts) }
-            } else {
-                let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
-                if expenseAccountSplitTotal > 0 {
-                    sectionBlock("Источники оплаты расходов") { expenseAccountSourceSection(d) }
+            if canViewFinancialData {
+                if !d.managers.isEmpty {
+                    sectionBlock("Менеджеры") { managersSection(d.managers, revenue: d.summary.revenue) }
                 }
-            }
-            if !d.expensesByCategory.isEmpty {
-                sectionBlock("Топ расходов") { expensesCategorySection(d.expensesByCategory, revenue: d.summary.revenue) }
-            }
-            if let branches = d.expensesByBranch, !branches.isEmpty {
-                sectionBlock("Расходы по филиалам") {
-                    expensesByBranchSection(branches, totalExpense: d.summary.totalExpense)
+                if !d.points.isEmpty {
+                    sectionBlock("Точки продаж") { pointsSection(d.points, revenue: d.summary.revenue) }
                 }
-            }
-            if !d.chart.isEmpty {
-                sectionBlock("Динамика") {
-                    chartSection(d.chart)
+                if let expenseAccounts = d.expenseByAccount, !expenseAccounts.isEmpty {
+                    sectionBlock("Источники оплаты расходов") { expenseByAccountSection(expenseAccounts) }
+                } else {
+                    let expenseAccountSplitTotal = (d.expenseFromIpAccounts ?? 0) + (d.expenseFromOwnAccounts ?? 0)
+                    if expenseAccountSplitTotal > 0 {
+                        sectionBlock("Источники оплаты расходов") { expenseAccountSourceSection(d) }
+                    }
                 }
-            }
+                if !d.expensesByCategory.isEmpty {
+                    sectionBlock("Топ расходов") { expensesCategorySection(d.expensesByCategory, revenue: d.summary.revenue) }
+                }
+                if let branches = d.expensesByBranch, !branches.isEmpty {
+                    sectionBlock("Расходы по филиалам") {
+                        expensesByBranchSection(branches, totalExpense: d.summary.totalExpense)
+                    }
+                }
+                if !d.chart.isEmpty {
+                    sectionBlock("Динамика") {
+                        chartSection(d.chart)
+                    }
+                }
 
-            if d.summary.totalIncome == 0, d.summary.totalExpense == 0, d.summary.revenue == 0 {
-                Text("За выбранный период нет доходов и расходов в данных.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                if d.summary.totalIncome == 0, d.summary.totalExpense == 0, d.summary.revenue == 0 {
+                    Text("За выбранный период нет доходов и расходов в данных.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
             }
 
             Color.clear.frame(height: 32)
@@ -525,9 +561,14 @@ struct HomeView: View {
         periodType: String,
         cashCommitments: DashboardCashCommitments?,
         bankAccounts: [DashboardBankAccount]?,
+        cashRegisters: [CashRegister]?,
+        canUploadBalance: Bool,
         showBankAccountsExpanded: Binding<Bool>
     ) -> some View {
         let hasBankAccounts = !(bankAccounts ?? []).isEmpty
+        let visibleCashRegisters = visibleCashRegisters(cashRegisters, canUploadBalance: canUploadBalance)
+        let hasCashRegisters = !visibleCashRegisters.isEmpty
+        let hasExpandableBalances = hasBankAccounts || hasCashRegisters
         return VStack(spacing: 16) {
             // Rings + блок с кольцами
             ZStack {
@@ -559,7 +600,7 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         if !isFocusedFutureMonth {
                             Group {
-                                if hasBankAccounts {
+                                if hasExpandableBalances {
                                     Button {
                                         showBankAccountsExpanded.wrappedValue.toggle()
                                         DashboardHaptics.lightImpact()
@@ -584,7 +625,7 @@ struct HomeView: View {
                                         }
                                     }
                                     .buttonStyle(.plain)
-                                    .accessibilityHint("Показать или скрыть остатки по банковским счетам")
+                                    .accessibilityHint("Показать или скрыть остатки по счетам и кассам")
                                 } else {
                                     VStack(alignment: .leading, spacing: 2) {
                                         denegnyyOstatokCaption(
@@ -622,12 +663,15 @@ struct HomeView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            if !isFocusedFutureMonth,
-               hasBankAccounts,
-               showBankAccountsExpanded.wrappedValue,
-               let banks = bankAccounts {
-                bankAccountsSnapshotSection(banks)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+            if !isFocusedFutureMonth, showBankAccountsExpanded.wrappedValue {
+                if hasBankAccounts, let banks = bankAccounts {
+                    bankAccountsSnapshotSection(banks)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                if hasCashRegisters {
+                    cashRegistersSection(visibleCashRegisters, canUploadBalance: canUploadBalance)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
             }
 
             // Metric row
@@ -846,124 +890,13 @@ struct HomeView: View {
     private func approvalsSection(_ stats: DashboardApprovalStats) -> some View {
         sectionBlock("Согласования") {
             FitnessCard {
-                Button {
+                ApprovalsWhoopProgressView(stats: stats) {
                     DashboardHaptics.lightImpact()
                     detailSheet = .approvals(stats, approvalsPeriodLabel())
-                } label: {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(alignment: .center, spacing: 10) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.title3)
-                                .foregroundStyle(DashboardPalette.income)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(approvalsSummaryLine(stats))
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                    .multilineTextAlignment(.leading)
-                                if stats.pendingInPeriod > 0, stats.pendingActionCount == 0 {
-                                    Text("\(stats.pendingInPeriod) ожидает в периоде")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            Spacer()
-                            if stats.pendingActionCount > 0 {
-                                Text("\(stats.pendingActionCount)")
-                                    .font(.caption.weight(.bold))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.orange.opacity(0.2))
-                                    .foregroundStyle(.orange)
-                                    .clipShape(Capsule())
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-
-                        if !stats.highlightedPendingItems.isEmpty {
-                            Divider()
-                            VStack(alignment: .leading, spacing: 8) {
-                                Label(
-                                    stats.pendingActionCount > 0
-                                        ? "Требуется ваш ответ"
-                                        : "Ожидает согласования",
-                                    systemImage: "exclamationmark.circle.fill"
-                                )
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 10) {
-                                        ForEach(stats.highlightedPendingItems.prefix(6)) { item in
-                                            approvalPreviewCard(item) {
-                                                openApprovalItem(item)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 4)
                 }
-                .buttonStyle(.dashboardPressable)
+                .padding(.vertical, 4)
             }
         }
-    }
-
-    private func approvalsSummaryLine(_ stats: DashboardApprovalStats) -> String {
-        if stats.total == 0 {
-            if stats.pendingActionCount > 0 {
-                return "Ожидает вашего ответа: \(stats.pendingActionCount)"
-            }
-            let awaiting = stats.highlightedPendingItems.count
-            if awaiting > 0 {
-                return "\(awaiting) ожидает согласования"
-            }
-            return "Нет запросов за период"
-        }
-        var parts: [String] = ["\(stats.total) запросов", "\(stats.approved) согласовано"]
-        if stats.rejected > 0 {
-            parts.append("\(stats.rejected) отклонено")
-        }
-        if stats.pendingInPeriod > 0 {
-            parts.append("\(stats.pendingInPeriod) ожидает")
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    private func openApprovalItem(_ item: DashboardApprovalItem) {
-        if item.conversationId > 0 {
-            chatService.navigateToConversation(id: item.conversationId)
-        } else {
-            chatService.pendingOpenChatsTab = true
-        }
-    }
-
-    private func approvalPreviewCard(_ item: DashboardApprovalItem, onTap: @escaping () -> Void) -> some View {
-        Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 6) {
-                if !item.formattedAmount.isEmpty {
-                    Text(item.formattedAmount)
-                        .font(.subheadline.weight(.bold).monospacedDigit())
-                }
-                if let desc = item.payload.description, !desc.isEmpty {
-                    Text(desc)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-                Text(item.senderName.isEmpty ? item.displayTitle : item.senderName)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            .padding(10)
-            .frame(width: 150, alignment: .leading)
-            .background(Color(.tertiarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Section Block
@@ -1098,6 +1031,118 @@ struct HomeView: View {
         f.formatOptions = [.withInternetDateTime]
         return f
     }()
+
+    // MARK: - Кассы (наличные)
+
+    /// Какие кассы показывать: с правом — все (включая пустые для ввода);
+    /// без права — только с уже внесённым остатком (чтобы не плодить пустые строки).
+    private func visibleCashRegisters(_ registers: [CashRegister]?, canUploadBalance: Bool) -> [CashRegister] {
+        let all = registers ?? []
+        if canUploadBalance { return all }
+        return all.filter { $0.hasBalance }
+    }
+
+    private func cashRegistersSection(_ registers: [CashRegister], canUploadBalance: Bool) -> some View {
+        let sorted = registers.sorted { lhs, rhs in
+            // «Общая касса» (pointId == nil) — наверх, остальные по названию.
+            if (lhs.pointId == nil) != (rhs.pointId == nil) { return lhs.pointId == nil }
+            return lhs.label.localizedCaseInsensitiveCompare(rhs.label) == .orderedAscending
+        }
+        return FitnessCard {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "banknote")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Наличные в кассах")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+
+                ForEach(Array(sorted.enumerated()), id: \.element.id) { idx, reg in
+                    cashRegisterRow(reg, canUploadBalance: canUploadBalance)
+                    if idx < sorted.count - 1 {
+                        Divider().padding(.vertical, 6)
+                    }
+                }
+            }
+        }
+    }
+
+    private func cashRegisterRow(_ reg: CashRegister, canUploadBalance: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: reg.pointId == nil ? "tray.full" : "storefront")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(DashboardRingPalette.balance)
+                .frame(width: 26, height: 26)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(reg.label)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if reg.hasBalance, let dateStr = reg.balanceDate {
+                    Text("Внесено \(DashboardMoney.longDateLabel(String(dateStr.prefix(10))))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                } else if let company = reg.companyName, !company.isEmpty {
+                    Text(company)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Group {
+                if let bal = reg.balance {
+                    if canUploadBalance {
+                        Button { cashEntryTarget = reg } label: {
+                            balanceTextWithPencil(bal)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Text(DashboardMoney.formatTenge(bal))
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                    }
+                } else if canUploadBalance {
+                    // Нейтральная, ненавязчивая кнопка (НЕ красная, в отличие от «Загрузить выписку»).
+                    Button { cashEntryTarget = reg } label: {
+                        Text("Внести остаток")
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .foregroundStyle(DashboardRingPalette.balance)
+                            .background(DashboardRingPalette.balance.opacity(0.14))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text("Нет данных")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(maxWidth: 160, alignment: .trailing)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func balanceTextWithPencil(_ bal: Double) -> some View {
+        HStack(spacing: 5) {
+            Text(DashboardMoney.formatTenge(bal))
+                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .foregroundStyle(.primary)
+            Image(systemName: "square.and.pencil")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+    }
 
     private func bankAccountsSnapshotSection(_ accounts: [DashboardBankAccount]) -> some View {
         let sorted = accounts.sorted {
@@ -1721,10 +1766,12 @@ struct HomeView: View {
 
     private var loadingPlaceholder: some View {
         VStack(spacing: 16) {
-            RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)).frame(height: 150)
-            HStack(spacing: 10) {
-                ForEach(0..<3) { _ in
-                    RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemGroupedBackground)).frame(height: 64)
+            if canViewFinancialData {
+                RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)).frame(height: 150)
+                HStack(spacing: 10) {
+                    ForEach(0..<3) { _ in
+                        RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemGroupedBackground)).frame(height: 64)
+                    }
                 }
             }
             RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)).frame(height: 100)
@@ -1773,6 +1820,9 @@ struct HomeView: View {
         pending: [PendingApprovalItem]
     ) -> DashboardApprovalStats {
         let base = dashboardStats ?? fallbackStats ?? .empty
+        guard appState.user?.isInitiatorRole != true else {
+            return base
+        }
         return base.enriched(withPending: pending)
     }
 
@@ -1798,37 +1848,61 @@ struct HomeView: View {
                 dateStr = monthFirstDayISO(from: mtdAnchorMonth)
             }
             let period = selectedPeriod.apiValue
-            async let dashboardTask = APIService.shared.dashboard(period: period, date: dateStr)
-            async let branchesList = branchesLoadOptional()
-            async let teamSnap = teamLoadOptional()
-            async let pendingTask = chatService.loadPendingApprovals()
-            async let approvalStatsTask = approvalStatsLoadOptional(period: period, date: dateStr)
-            let loaded = try await dashboardTask
-            _ = await pendingTask
-            let br = await branchesList
-            let tm = await teamSnap
-            let extraStats = await approvalStatsTask
-            let picked = DashboardDisplayTax.pickPrimaryBranch(
-                branches: br ?? [],
-                team: tm,
-                userEmail: appState.user?.email
-            )
-            let resolvedStats = resolveApprovalStats(
-                dashboardStats: loaded.approvalStats,
-                fallbackStats: extraStats,
-                pending: chatService.pendingApprovals
-            )
-            await MainActor.run {
-                primaryBranch = picked
-                dashboard = loaded
-                approvalStats = resolvedStats
-                if loaded.bankAccounts?.isEmpty != false {
-                    expandedBankAccountsUnderOstatok = false
+
+            if canViewFinancialData {
+                async let dashboardTask = APIService.shared.dashboard(period: period, date: dateStr)
+                async let branchesList = branchesLoadOptional()
+                async let teamSnap = teamLoadOptional()
+                async let pendingTask = chatService.loadPendingApprovals()
+                async let approvalStatsTask = approvalStatsLoadOptional(period: period, date: dateStr)
+                let loaded = try await dashboardTask
+                _ = await pendingTask
+                let br = await branchesList
+                let tm = await teamSnap
+                let extraStats = await approvalStatsTask
+                let picked = DashboardDisplayTax.pickPrimaryBranch(
+                    branches: br ?? [],
+                    team: tm,
+                    userEmail: appState.user?.email
+                )
+                let resolvedStats = resolveApprovalStats(
+                    dashboardStats: loaded.approvalStats,
+                    fallbackStats: extraStats,
+                    pending: chatService.pendingApprovals
+                )
+                await MainActor.run {
+                    primaryBranch = picked
+                    dashboard = loaded
+                    approvalStats = resolvedStats
+                    if loaded.bankAccounts?.isEmpty != false {
+                        expandedBankAccountsUnderOstatok = false
+                    }
+                }
+            } else {
+                async let pendingTask = chatService.loadPendingApprovals()
+                async let approvalStatsTask = approvalStatsLoadOptional(period: period, date: dateStr)
+                _ = await pendingTask
+                let extraStats = await approvalStatsTask
+                let resolvedStats = resolveApprovalStats(
+                    dashboardStats: extraStats,
+                    fallbackStats: nil,
+                    pending: chatService.pendingApprovals
+                )
+                await MainActor.run {
+                    primaryBranch = nil
+                    dashboard = nil
+                    approvalStats = resolvedStats
                 }
             }
         } catch {
             if error.finside_isCancellationLike { return }
-            errorMessage = error.localizedDescription
+            if !canViewFinancialData,
+               let apiErr = error as? APIError,
+               case .unauthorized = apiErr {
+                errorMessage = "Сессия истекла. Выйдите и войдите снова"
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -1956,6 +2030,130 @@ private struct MetricRow: View {
     }
 
     private var shortVal: String { DashboardMoney.formatCompact(value) }
+}
+
+// MARK: - Approvals (WHOOP-style)
+
+private struct ApprovalsWhoopProgressView: View {
+    let stats: DashboardApprovalStats
+    var onRemainingTap: () -> Void
+
+    /// Обработано: согласовано + отклонено.
+    private var processedCount: Int {
+        if stats.total > 0 {
+            return stats.approved + stats.rejected
+        }
+        return 0
+    }
+
+    /// Сколько ещё не обработано.
+    private var remainingCount: Int {
+        if stats.total > 0 {
+            return max(0, stats.total - processedCount)
+        }
+        return max(stats.pendingActionCount, stats.pendingInPeriod)
+    }
+
+    private var processedRatio: CGFloat {
+        guard stats.total > 0 else { return 0 }
+        return CGFloat(processedCount) / CGFloat(stats.total)
+    }
+
+    private var needsAction: Bool { stats.pendingActionCount > 0 }
+
+    private var centerLabel: String {
+        if stats.total == 0, remainingCount == 0 {
+            return "Нет запросов за период"
+        }
+        if remainingCount == 0, stats.total > 0 {
+            return "Все запросы обработаны"
+        }
+        if needsAction {
+            return "Требуется ваш ответ: \(remainingCount)"
+        }
+        return "Осталось согласовать \(remainingCount)"
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Button(action: onRemainingTap) {
+                HStack(spacing: 4) {
+                    Text(centerLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(remainingCount > 0 ? Color.white : .secondary)
+                    if remainingCount > 0 || stats.total > 0 {
+                        Image(systemName: "chevron.right")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(remainingCount > 0 ? Color.white.opacity(0.7) : Color(.tertiaryLabel))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Открыть список согласований")
+
+            HStack(alignment: .top, spacing: 0) {
+                endpoint(
+                    icon: "checkmark.circle.fill",
+                    count: processedCount,
+                    tint: DashboardPalette.income,
+                    caption: "Отработано"
+                )
+
+                progressLine
+                    .padding(.top, 11)
+                    .padding(.horizontal, 6)
+
+                endpoint(
+                    icon: "tray.full.fill",
+                    count: stats.total,
+                    tint: .secondary,
+                    caption: "Всего"
+                )
+            }
+        }
+    }
+
+    private var progressLine: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color(.tertiarySystemFill))
+                Capsule()
+                    .fill(DashboardPalette.income)
+                    .frame(width: w * min(processedRatio, 1))
+            }
+        }
+        .frame(height: 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func endpoint(
+        icon: String,
+        count: Int,
+        tint: Color,
+        caption: String
+    ) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(tint)
+                .symbolRenderingMode(.hierarchical)
+                .frame(width: 28, height: 28)
+
+            Text("\(count)")
+                .font(.title3.weight(.bold).monospacedDigit())
+                .foregroundStyle(.primary)
+
+            Text(caption)
+                .font(.caption2)
+                .foregroundStyle(Color(.tertiaryLabel))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(width: 72)
+    }
 }
 
 // MARK: - ProgressBarView

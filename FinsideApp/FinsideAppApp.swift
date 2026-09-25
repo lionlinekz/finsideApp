@@ -19,6 +19,9 @@ struct FinsideAppApp: App {
                     // Запустить отслеживание APNs/JWT и автоматическую
                     // регистрацию push-токена на сервере.
                     PushRegistrationService.shared.start()
+                    // Продления и возвраты приходят и вне экрана оплаты —
+                    // без этого слушателя такая покупка до сервера не дойдёт.
+                    StoreKitService.shared.startListeningForTransactions()
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .finsideTokensRefreshed)) { _ in
                     KeychainService.syncAccessTokenToAppGroupIfNeeded()
@@ -69,6 +72,18 @@ struct RootView: View {
             switch appState.currentScreen {
             case .login:
                 LoginView()
+                    .transition(.opacity)
+            case .signUp:
+                SignUpView()
+                    .transition(.opacity)
+            case .otp(let email):
+                OtpVerificationView(email: email)
+                    .transition(.opacity)
+            case .paywall:
+                PaywallView()
+                    .transition(.opacity)
+            case .welcome:
+                WelcomeView()
                     .transition(.opacity)
             case .pinSetup:
                 PinSetupView()

@@ -25,6 +25,9 @@ struct ApprovalWidgetCell: View {
     /// чат из push, а `messagesByConversation` ещё не загружен) — падаем
     /// на статус из снапшота.
     private var liveStatus: ApprovalStatus? {
+        if let local = chatService.localApprovalStatuses[message.id] {
+            return local
+        }
         let live = chatService.messagesByConversation[message.conversationId]?
             .first(where: { $0.id == message.id })?
             .approvalStatus
@@ -76,7 +79,16 @@ struct ApprovalWidgetCell: View {
     }
 
     private var canMarkMoneySent: Bool {
-        liveStatus == .approved && !isInitiator && !isPaid && !liveMoneySent
+        liveStatus == .approved
+            && !message.isInvoiceOnly
+            && message.conversationId > 0
+            && !isInitiator
+            && !isPaid
+            && !liveMoneySent
+    }
+
+    private var canResolveApproval: Bool {
+        (appState.user?.canResolveApprovals ?? true) && !isInitiator
     }
 
     var body: some View {
@@ -126,13 +138,13 @@ struct ApprovalWidgetCell: View {
                     .labelStyle(.titleAndIcon)
             }
 
-            if isPending {
+            if isPending && canResolveApproval {
                 HStack(spacing: 10) {
                     Button {
                         #if canImport(UIKit)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         #endif
-                        Task { await chatService.approve(messageId: message.id) }
+                        Task { await chatService.resolveApproval(message: message, newStatus: .approved) }
                     } label: {
                         ZStack {
                             Label("Согласовать", systemImage: "checkmark.circle.fill")
@@ -153,7 +165,7 @@ struct ApprovalWidgetCell: View {
                         #if canImport(UIKit)
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         #endif
-                        Task { await chatService.reject(messageId: message.id) }
+                        Task { await chatService.resolveApproval(message: message, newStatus: .rejected) }
                     } label: {
                         ZStack {
                             Label("Отклонить", systemImage: "xmark.circle.fill")
@@ -172,6 +184,12 @@ struct ApprovalWidgetCell: View {
                 .labelStyle(.titleAndIcon)
                 .animation(.easeInOut(duration: 0.2), value: isInFlight)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
+            } else if isPending && isInitiator {
+                Label("Ожидает решения управляющего", systemImage: "clock.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {
                 resolvedFooter
                     .transition(.opacity.combined(with: .move(edge: .top)))

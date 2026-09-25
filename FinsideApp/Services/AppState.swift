@@ -28,6 +28,12 @@ enum AppearancePreference: String, CaseIterable, Identifiable {
 
 enum AuthScreen: Equatable {
     case login
+    case signUp
+    /// Ввод кода с почты. Email носим с собой: экран может пережить перезапуск флоу.
+    case otp(email: String)
+    /// Выбор тарифа. Показывается только владельцу без действующей подписки.
+    case paywall
+    case welcome
     case pinSetup
     case lockScreen
     case main
@@ -82,15 +88,135 @@ final class AppState {
         do {
             let response = try await APIService.shared.login(email: email, password: password)
             user = response.user
-            if KeychainService.hasPin {
-                currentScreen = .main
-            } else {
-                currentScreen = .pinSetup
-            }
+            routeAfterAuth()
         } catch {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    /// Куда вести после успешной авторизации.
+    ///
+    /// Неоплаченная подписка перевешивает всё остальное: без неё в приложении
+    /// нечего показывать. Сотрудника экран тарифов не касается — см.
+    /// `UserInfo.needsPaywall`.
+    func routeAfterAuth() {
+        if user?.needsPaywall == true {
+            currentScreen = .paywall
+        } else if KeychainService.hasPin {
+            currentScreen = .main
+        } else {
+            currentScreen = .pinSetup
+        }
+    }
+
+    // MARK: - Регистрация
+
+    func startSignUp() {
+        errorMessage = nil
+        currentScreen = .signUp
+    }
+
+    func backToLogin() {
+        errorMessage = nil
+        currentScreen = .login
+    }
+
+    /// Создаёт аккаунт и отправляет код на почту. `true` — можно идти на экран кода.
+    func signUp(
+        brandName: String,
+        email: String,
+        password: String,
+        passwordConfirm: String
+    ) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            _ = try await APIService.shared.register(
+                brandName: brandName,
+                email: email,
+                password: password,
+                passwordConfirm: passwordConfirm
+            )
+            currentScreen = .otp(email: email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Подтверждает код. Сервер в ответ выдаёт токены — отдельный вход не нужен.
+    ///
+    /// Никуда не переводит: экран кода сам показывает галочку, а затем ждёт
+    /// готовности рабочего пространства через `awaitWorkspaceReady()`.
+    /// Возвращает true, если код принят.
+    func verifyOtp(email: String, code: String) async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let response = try await APIService.shared.verifyRegistrationOtp(email: email, code: code)
+            user = response.user
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Ждёт, пока сервер создаст схему тенанта. Возвращает текст ошибки либо nil.
+    ///
+    /// Создание занимает несколько секунд, поэтому идёт в фоне на сервере —
+    /// подтверждение кода на нём не задерживается.
+    func awaitWorkspaceReady(
+        onStatus: @escaping (String) -> Void
+    ) async -> String? {
+        let deadline = Date().addingTimeInterval(120)
+
+        while Date() < deadline {
+            do {
+                let state = try await APIService.shared.fetchRegistrationStatus()
+                onStatus(state.message)
+                if state.isReady {
+                    // Подписка могла появиться за это время — перечитываем.
+                    await refreshAuthenticatedUser()
+                    return nil
+                }
+                if state.isFailed {
+                    return state.message
+                }
+            } catch {
+                // Сеть моргнула — не сдаёмся, пробуем до конца срока.
+            }
+            try? await Task.sleep(for: .seconds(1))
+        }
+        return "Не дождались готовности рабочего пространства. Попробуйте войти позже."
+    }
+
+    /// Повторная отправка кода. Возвращает текст ошибки либо nil.
+    func resendOtp(email: String) async -> String? {
+        do {
+            _ = try await APIService.shared.resendRegistrationOtp(email: email)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    // MARK: - Подписка
+
+    /// Подписка оплачена — показываем приветствие.
+    func subscriptionActivated() {
+        errorMessage = nil
+        currentScreen = .welcome
+        Task { await refreshAuthenticatedUser() }
+    }
+
+    /// Приветственный экран закрыт.
+    func finishWelcome() {
+        currentScreen = KeychainService.hasPin ? .main : .pinSetup
     }
 
     // MARK: - PIN
@@ -114,7 +240,11 @@ final class AppState {
     func unlockWithPin(_ pin: String) {
         if verifyPin(pin) {
             currentScreen = .main
-            Task { await refreshAuthenticatedUser() }
+            Task {
+                await refreshAuthenticatedUser()
+                // Подписка могла закончиться, пока приложение было закрыто.
+                if user?.needsPaywall == true { currentScreen = .paywall }
+            }
         } else {
             errorMessage = "Неверный PIN"
         }
@@ -127,6 +257,7 @@ final class AppState {
         if success {
             currentScreen = .main
             await refreshAuthenticatedUser()
+            if user?.needsPaywall == true { currentScreen = .paywall }
         }
     }
 

@@ -103,6 +103,7 @@ struct DashboardApprovalStats: Decodable, Equatable {
 struct DashboardApprovalItem: Codable, Identifiable, Hashable {
     let id: Int
     let conversationId: Int
+    let senderId: Int?
     let senderName: String
     let text: String
     let payload: MessagePayload
@@ -115,6 +116,7 @@ struct DashboardApprovalItem: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, text, payload
         case conversationId = "conversation_id"
+        case senderId = "sender_id"
         case senderName = "sender_name"
         case createdAt = "created_at"
         case approvalStatus = "approval_status"
@@ -138,6 +140,7 @@ struct DashboardApprovalItem: Codable, Identifiable, Hashable {
     init(
         id: Int,
         conversationId: Int,
+        senderId: Int? = nil,
         senderName: String,
         text: String,
         payload: MessagePayload,
@@ -149,6 +152,7 @@ struct DashboardApprovalItem: Codable, Identifiable, Hashable {
     ) {
         self.id = id
         self.conversationId = conversationId
+        self.senderId = senderId
         self.senderName = senderName
         self.text = text
         self.payload = payload
@@ -174,10 +178,22 @@ struct DashboardApprovalItem: Codable, Identifiable, Hashable {
         )
     }
 
+    var approvalSnapshot: ApprovalSnapshot {
+        ApprovalSnapshot(
+            senderId: senderId,
+            senderName: senderName,
+            text: text,
+            payload: payload,
+            createdAt: createdAt,
+            approvalStatus: approvalStatus
+        )
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(Int.self, forKey: .id)
         conversationId = try c.decode(Int.self, forKey: .conversationId)
+        senderId = try c.decodeIfPresent(Int.self, forKey: .senderId)
         senderName = try c.decodeIfPresent(String.self, forKey: .senderName) ?? ""
         text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
         payload = try c.decodeIfPresent(MessagePayload.self, forKey: .payload) ?? MessagePayload()
@@ -239,6 +255,14 @@ struct DashboardResponse: Decodable {
     let chart: [ChartPoint]
     /// Счета и остатки из последних выписок (см. `closing_balance` на загрузке).
     let bankAccounts: [DashboardBankAccount]?
+    /// Кассы точек (наличные) с последним внесённым остатком.
+    let cashRegisters: [CashRegister]?
+    /// Сумма известных остатков по кассам.
+    let cashBalanceTotal: Double?
+    /// Сколько касс имеют внесённый остаток.
+    let cashBalanceKnownCount: Int?
+    /// Может ли текущий пользователь вносить остатки (право UPLOAD_BALANCE).
+    let canUploadBalance: Bool?
 
     enum CodingKeys: String, CodingKey {
         case period, summary, comparison, managers, points, chart
@@ -254,6 +278,10 @@ struct DashboardResponse: Decodable {
         case expensesByBranch = "expenses_by_branch"
         case expensesByCategory = "expenses_by_category"
         case bankAccounts = "bank_accounts"
+        case cashRegisters = "cash_registers"
+        case cashBalanceTotal = "cash_balance_total"
+        case cashBalanceKnownCount = "cash_balance_known_count"
+        case canUploadBalance = "can_upload_balance"
         case cashCommitments = "cash_commitments"
         case approvalStats = "approval_stats"
     }
@@ -352,6 +380,82 @@ struct DashboardBankAccount: Decodable, Identifiable, Hashable {
         lastStatementUploadedAt = try c.decodeIfPresent(String.self, forKey: .lastStatementUploadedAt)
         hasStatement = try c.decodeIfPresent(Bool.self, forKey: .hasStatement) ?? false
         isStale = try c.decodeIfPresent(Bool.self, forKey: .isStale) ?? true
+    }
+}
+
+/// Касса точки (наличные). `pointId == nil` — «Общая касса».
+/// Остаток вводится вручную, поэтому может отсутствовать (`balance == nil`).
+struct CashRegister: Decodable, Identifiable, Hashable {
+    let pointId: Int?
+    let label: String
+    let companyName: String?
+    let balance: Double?
+    let balanceDate: String?
+    let hasBalance: Bool
+
+    var id: String {
+        if let pointId { return "p-\(pointId)" }
+        return "general"
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case pointId = "point_id"
+        case label
+        case companyName = "company_name"
+        case balance
+        case balanceDate = "balance_date"
+        case hasBalance = "has_balance"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        pointId = try c.decodeIfPresent(Int.self, forKey: .pointId)
+        label = try c.decodeIfPresent(String.self, forKey: .label) ?? "Касса"
+        companyName = try c.decodeIfPresent(String.self, forKey: .companyName)
+        balance = try c.decodeIfPresent(Double.self, forKey: .balance)
+        balanceDate = try c.decodeIfPresent(String.self, forKey: .balanceDate)
+        hasBalance = try c.decodeIfPresent(Bool.self, forKey: .hasBalance) ?? (balance != nil)
+    }
+
+    init(pointId: Int?, label: String, companyName: String?, balance: Double?, balanceDate: String?, hasBalance: Bool) {
+        self.pointId = pointId
+        self.label = label
+        self.companyName = companyName
+        self.balance = balance
+        self.balanceDate = balanceDate
+        self.hasBalance = hasBalance
+    }
+}
+
+/// Ответ POST /api/cash-balances/save/ — обновлённая касса.
+struct CashBalanceSaveResponse: Decodable {
+    let ok: Bool
+    let register: CashRegister
+}
+
+/// Ответ GET /api/cash-balances/ — список касс с правами на редактирование.
+struct CashRegistersResponse: Decodable {
+    let registers: [CashRegister]
+    let total: Double?
+    let knownCount: Int?
+    let canUploadBalance: Bool
+    let asOf: String?
+
+    enum CodingKeys: String, CodingKey {
+        case registers
+        case total
+        case knownCount = "known_count"
+        case canUploadBalance = "can_upload_balance"
+        case asOf = "as_of"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        registers = try c.decodeIfPresent([CashRegister].self, forKey: .registers) ?? []
+        total = try c.decodeIfPresent(Double.self, forKey: .total)
+        knownCount = try c.decodeIfPresent(Int.self, forKey: .knownCount)
+        canUploadBalance = try c.decodeIfPresent(Bool.self, forKey: .canUploadBalance) ?? false
+        asOf = try c.decodeIfPresent(String.self, forKey: .asOf)
     }
 }
 

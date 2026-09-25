@@ -6,39 +6,66 @@ struct PendingApprovalCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "dollarsign.circle.fill")
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.orange)
-                    Text("Согласование")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .symbolRenderingMode(.hierarchical)
                 }
 
-                if !item.formattedAmount.isEmpty {
-                    Text(item.formattedAmount)
-                        .font(.title3.weight(.bold))
-                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(titleText)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
 
-                if let desc = item.payload.description, !desc.isEmpty {
-                    Text(desc)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
+                    if !descriptionText.isEmpty {
+                        Text(descriptionText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
 
-                HStack {
-                    Image(systemName: "person.circle")
+                    Text(subtitleText)
                         .font(.caption)
-                    Text(item.senderName.isEmpty ? "Менеджер" : item.senderName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
             }
-            .padding(12)
-            .frame(width: 180, alignment: .leading)
-            .liquidGlassCard(cornerRadius: 12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private var titleText: String {
+        if !item.formattedAmount.isEmpty { return item.formattedAmount }
+        return "Согласование"
+    }
+
+    private var descriptionText: String {
+        if let desc = item.payload.description, !desc.isEmpty {
+            return desc
+        }
+        return ""
+    }
+
+    private var subtitleText: String {
+        if !item.senderName.isEmpty { return item.senderName }
+        if !item.conversationTitle.isEmpty { return item.conversationTitle }
+        return "Запрос на согласование"
     }
 }

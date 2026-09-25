@@ -41,8 +41,12 @@ struct UserInfo: Codable {
     let avatarURL: String?
     /// Наименование роли в тенанте (из Position), если есть.
     let jobTitle: String?
+    /// Код роли в тенанте (OWNER, MANAGER, INITIATOR, …), если есть.
+    let roleCode: String?
     /// Компания первой позиции, если привязана.
     let companyName: String?
+    /// Состояние подписки организации. По нему решается, вести ли на экран тарифов.
+    let subscription: SubscriptionInfo?
 
     enum CodingKeys: String, CodingKey {
         case id, email
@@ -53,7 +57,71 @@ struct UserInfo: Codable {
         case isVerified = "is_verified"
         case avatarURL = "avatar_url"
         case jobTitle = "job_title"
+        case roleCode = "role_code"
         case companyName = "company_name"
+        case subscription
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        email = try c.decodeIfPresent(String.self, forKey: .email) ?? ""
+        firstName = try c.decodeIfPresent(String.self, forKey: .firstName) ?? ""
+        lastName = try c.decodeIfPresent(String.self, forKey: .lastName) ?? ""
+        brandName = try c.decodeIfPresent(String.self, forKey: .brandName) ?? ""
+        phoneVerified = try c.decodeIfPresent(Bool.self, forKey: .phoneVerified) ?? false
+        isVerified = try c.decodeIfPresent(Bool.self, forKey: .isVerified) ?? false
+        avatarURL = try c.decodeIfPresent(String.self, forKey: .avatarURL)
+        jobTitle = try c.decodeIfPresent(String.self, forKey: .jobTitle)
+        roleCode = try c.decodeIfPresent(String.self, forKey: .roleCode)
+        companyName = try c.decodeIfPresent(String.self, forKey: .companyName)
+        subscription = try c.decodeIfPresent(SubscriptionInfo.self, forKey: .subscription)
+    }
+
+    /// Платит за подписку владелец аккаунта, а не сотрудник.
+    ///
+    /// У только что зарегистрированного владельца ещё нет Position, поэтому
+    /// `roleCode` пустой. Сотруднику экран тарифов показывать нельзя: купить
+    /// он всё равно не сможет, а вход окажется заблокирован.
+    var canManageSubscription: Bool {
+        let code = (roleCode ?? "").uppercased()
+        return code.isEmpty || code == "OWNER"
+    }
+
+    /// Нужно ли вести пользователя на экран тарифов.
+    var needsPaywall: Bool {
+        (subscription?.needsPaywall ?? false) && canManageSubscription
+    }
+
+    /// Инициатор видит согласования, но не финансовые показатели компании.
+    var isInitiatorRole: Bool {
+        if roleCode?.uppercased() == "INITIATOR" { return true }
+        return jobTitle == "Инициатор"
+    }
+
+    /// Дашборд с доходами, расходами, остатками и отчётами.
+    var canViewFinancialDashboard: Bool {
+        !isInitiatorRole
+    }
+
+    /// Подтверждение чужих запросов на согласование (роль управляющего/владельца).
+    var canResolveApprovals: Bool {
+        !isInitiatorRole
+    }
+
+    /// Календарь платежей, налогов и финансовых событий.
+    var canViewFinancialCalendar: Bool {
+        !isInitiatorRole
+    }
+
+    /// Раздел «Бизнес» в настройках и управление компанией.
+    var canManageBusinessSettings: Bool {
+        !isInitiatorRole
+    }
+
+    /// Системные каналы: импорт выписок, разметка операций.
+    var canViewFinancialChats: Bool {
+        !isInitiatorRole
     }
 }
 
@@ -109,17 +177,48 @@ final class APIService {
     // MARK: - Login
 
     func login(email: String, password: String) async throws -> AuthResponse {
-        let body: [String: String] = ["email": email, "password": password]
+        KeychainService.delete(key: .accessToken)
+        KeychainService.delete(key: .refreshToken)
+        AppGroupTokenStore.clearAccessTokenForShareExtension()
+
+        let normalizedEmail = email
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let body: [String: String] = ["email": normalizedEmail, "password": password]
         let data = try await post(path: "/auth/login/", body: body)
         if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
            !errResp.error.isEmpty {
-            throw APIError.serverError(errResp.error)
+            throw APIError.serverError(Self.localizedLoginError(errResp.error))
         }
-        let resp = try JSONDecoder().decode(AuthResponse.self, from: data)
+        let resp: AuthResponse
+        do {
+            resp = try JSONDecoder().decode(AuthResponse.self, from: data)
+        } catch {
+            #if DEBUG
+            if let raw = String(data: data, encoding: .utf8) {
+                print("Login decode error. Raw response:\n\(raw.prefix(800))")
+            }
+            #endif
+            throw APIError.serverError("Не удалось разобрать ответ сервера")
+        }
         KeychainService.save(key: .accessToken, value: resp.accessToken)
         KeychainService.save(key: .refreshToken, value: resp.refreshToken)
         NotificationCenter.default.post(name: .finsideTokensRefreshed, object: nil)
         return resp
+    }
+
+    /// Читаемые сообщения для экрана входа (сервер часто отдаёт EN).
+    private static func localizedLoginError(_ serverMessage: String) -> String {
+        switch serverMessage.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "invalid email or password":
+            return "Неверный email или пароль"
+        case "email not verified":
+            return "Email не подтверждён. Проверьте почту или обратитесь к владельцу"
+        case "email and password are required":
+            return "Укажите email и пароль"
+        default:
+            return serverMessage
+        }
     }
 
     // MARK: - Refresh
@@ -332,21 +431,37 @@ final class APIService {
     }
 
     func approveMessage(messageId: Int) async throws -> ChatMessage {
-        let data = try await postAuth(path: "/chat/messages/\(messageId)/approve/", body: [:])
-        return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+        let data = try await postAuthJSONChecked(path: "/chat/messages/\(messageId)/approve/", json: [:])
+        return try decodeChatMessageResponse(data)
     }
 
     func rejectMessage(messageId: Int) async throws -> ChatMessage {
-        let data = try await postAuth(path: "/chat/messages/\(messageId)/reject/", body: [:])
-        return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+        let data = try await postAuthJSONChecked(path: "/chat/messages/\(messageId)/reject/", json: [:])
+        return try decodeChatMessageResponse(data)
+    }
+
+    func approveInvoice(invoiceId: Int, tenantSchema: String?) async throws {
+        var body: [String: String] = [:]
+        if let tenantSchema, !tenantSchema.isEmpty {
+            body["tenant_schema"] = tenantSchema
+        }
+        _ = try await postAuth(path: "/invoices/\(invoiceId)/approve/", body: body)
+    }
+
+    func rejectInvoice(invoiceId: Int, tenantSchema: String?) async throws {
+        var body: [String: String] = [:]
+        if let tenantSchema, !tenantSchema.isEmpty {
+            body["tenant_schema"] = tenantSchema
+        }
+        _ = try await postAuth(path: "/invoices/\(invoiceId)/reject/", body: body)
     }
 
     func markMoneySent(messageId: Int) async throws -> ChatMessage {
-        let data = try await postAuth(
+        let data = try await postAuthJSONChecked(
             path: "/chat/messages/\(messageId)/mark-money-sent/",
-            body: [:]
+            json: [:]
         )
-        return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+        return try decodeChatMessageResponse(data)
     }
 
     /// Прикрепить PDF-квитанцию Kaspi к согласованному запросу (только инициатор).
@@ -540,6 +655,24 @@ final class APIService {
 
     func deleteBankAccount(id: Int) async throws {
         _ = try await postAuthJSONChecked(path: "/bank-accounts/\(id)/delete/", json: [:])
+    }
+
+    // MARK: - Cash registers (наличные в кассах точек)
+
+    func cashRegisters() async throws -> CashRegistersResponse {
+        let data = try await get(path: "/cash-balances/")
+        return try JSONDecoder().decode(CashRegistersResponse.self, from: data)
+    }
+
+    /// Внести/обновить остаток кассы. `pointId == nil` — общая касса.
+    /// `date` в формате YYYY-MM-DD; nil — сегодня (определит сервер).
+    @discardableResult
+    func saveCashBalance(pointId: Int?, amount: Int, date: String? = nil) async throws -> CashRegister {
+        var body: [String: Any] = ["amount": amount]
+        if let pointId { body["point_id"] = pointId }
+        if let date, !date.isEmpty { body["date"] = date }
+        let data = try await postAuthJSONChecked(path: "/cash-balances/save/", json: body)
+        return try JSONDecoder().decode(CashBalanceSaveResponse.self, from: data).register
     }
 
     // MARK: - Branches (настройки → филиалы)
@@ -851,14 +984,37 @@ final class APIService {
         request.httpBody = try JSONEncoder().encode(body)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, http.statusCode == 401 {
-                throw APIError.unauthorized
+            if let http = response as? HTTPURLResponse,
+               !(200...299).contains(http.statusCode) {
+                if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+                   !errResp.error.isEmpty {
+                    let msg = path.hasPrefix("/auth/login/")
+                        ? Self.localizedLoginError(errResp.error)
+                        : errResp.error
+                    throw APIError.serverError(msg)
+                }
+                if http.statusCode == 401 {
+                    throw APIError.unauthorized
+                }
+                throw APIError.serverError("Ошибка сервера (\(http.statusCode))")
             }
             return data
         } catch let err as APIError {
             throw err
         } catch {
             throw APIError.networkError(error)
+        }
+    }
+
+    private func decodeChatMessageResponse(_ data: Data) throws -> ChatMessage {
+        do {
+            return try JSONDecoder().decode(SingleMessageResponse.self, from: data).message
+        } catch {
+            if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+               !errResp.error.isEmpty {
+                throw APIError.serverError(errResp.error)
+            }
+            throw error
         }
     }
 
@@ -1129,5 +1285,198 @@ private extension String {
     /// Значение query-параметра (кириллица, пробелы).
     var forURLQuery: String {
         addingPercentEncoding(withAllowedCharacters: CharacterSet.urlQueryAllowed.subtracting(CharacterSet(charactersIn: "&+=?"))) ?? self
+    }
+}
+
+// MARK: - Регистрация, тарифы и подписка
+//
+// Расширение лежит в том же файле, что и APIService, потому что сетевые
+// помощники (post/get/postAuthJSONChecked) приватные и из другого файла
+// недоступны.
+
+struct SubscriptionInfo: Codable {
+    let status: String
+    let plan: String?
+    let planId: Int?
+    let isTrial: Bool
+    let trialEndDate: String?
+    let endDate: String?
+    let daysRemaining: Int
+    let needsPaywall: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case status, plan
+        case planId = "plan_id"
+        case isTrial = "is_trial"
+        case trialEndDate = "trial_end_date"
+        case endDate = "end_date"
+        case daysRemaining = "days_remaining"
+        case needsPaywall = "needs_paywall"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? "none"
+        plan = try c.decodeIfPresent(String.self, forKey: .plan)
+        planId = try c.decodeIfPresent(Int.self, forKey: .planId)
+        isTrial = try c.decodeIfPresent(Bool.self, forKey: .isTrial) ?? false
+        trialEndDate = try c.decodeIfPresent(String.self, forKey: .trialEndDate)
+        endDate = try c.decodeIfPresent(String.self, forKey: .endDate)
+        daysRemaining = try c.decodeIfPresent(Int.self, forKey: .daysRemaining) ?? 0
+        needsPaywall = try c.decodeIfPresent(Bool.self, forKey: .needsPaywall) ?? true
+    }
+}
+
+/// Подготовка рабочего пространства: схема тенанта создаётся в фоне.
+struct ProvisioningState: Codable {
+    /// pending | ready | failed
+    let status: String
+    let message: String
+
+    var isReady: Bool { status == "ready" }
+    var isFailed: Bool { status == "failed" }
+}
+
+struct RegistrationStatusResponse: Codable {
+    let provisioning: ProvisioningState
+    let subscription: SubscriptionInfo?
+}
+
+struct RegisterVerifyResponse: Codable {
+    let accessToken: String
+    let refreshToken: String
+    let user: UserInfo
+    let provisioning: ProvisioningState?
+
+    enum CodingKeys: String, CodingKey {
+        case user, provisioning
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+    }
+}
+
+/// Ответ на шаг регистрации, после которого ждём код с почты.
+struct RegisterOtpResponse: Codable {
+    let status: String
+    let email: String?
+    let otpExpiresIn: Int?
+    let resendAfter: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case status, email
+        case otpExpiresIn = "otp_expires_in"
+        case resendAfter = "resend_after"
+    }
+}
+
+struct PlanInfo: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let description: String
+    let appleProductId: String
+    let price: String
+    let billingCycle: String
+    let hasTrial: Bool
+    let trialDays: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, description, price
+        case appleProductId = "apple_product_id"
+        case billingCycle = "billing_cycle"
+        case hasTrial = "has_trial"
+        case trialDays = "trial_days"
+    }
+}
+
+struct PlansResponse: Codable {
+    let plans: [PlanInfo]
+    let appAccountToken: String?
+    let subscription: SubscriptionInfo?
+
+    enum CodingKeys: String, CodingKey {
+        case plans, subscription
+        case appAccountToken = "app_account_token"
+    }
+}
+
+struct SubscriptionStatusResponse: Codable {
+    let subscription: SubscriptionInfo
+}
+
+extension APIService {
+
+    // MARK: Регистрация
+
+    func register(
+        brandName: String,
+        email: String,
+        password: String,
+        passwordConfirm: String
+    ) async throws -> RegisterOtpResponse {
+        let body: [String: String] = [
+            "brand_name": brandName.trimmingCharacters(in: .whitespacesAndNewlines),
+            "email": Self.normalizedEmail(email),
+            "password": password,
+            "password_confirm": passwordConfirm,
+            "agree": "true",
+            "agree_privacy": "true",
+        ]
+        let data = try await post(path: "/auth/register/", body: body)
+        return try JSONDecoder().decode(RegisterOtpResponse.self, from: data)
+    }
+
+    /// Подтверждает код и сразу логинит: сервер возвращает те же токены, что и вход.
+    ///
+    /// Отвечает быстро — рабочее пространство тенанта готовится уже в фоне,
+    /// за ним следит `fetchRegistrationStatus()`.
+    func verifyRegistrationOtp(email: String, code: String) async throws -> RegisterVerifyResponse {
+        let body: [String: String] = [
+            "email": Self.normalizedEmail(email),
+            "code": code,
+        ]
+        let data = try await post(path: "/auth/register/verify/", body: body)
+        let resp = try JSONDecoder().decode(RegisterVerifyResponse.self, from: data)
+        KeychainService.save(key: .accessToken, value: resp.accessToken)
+        KeychainService.save(key: .refreshToken, value: resp.refreshToken)
+        NotificationCenter.default.post(name: .finsideTokensRefreshed, object: nil)
+        return resp
+    }
+
+    /// Готово ли рабочее пространство после подтверждения кода.
+    func fetchRegistrationStatus() async throws -> ProvisioningState {
+        let data = try await get(path: "/auth/register/status/")
+        return try JSONDecoder().decode(RegistrationStatusResponse.self, from: data).provisioning
+    }
+
+    func resendRegistrationOtp(email: String) async throws -> RegisterOtpResponse {
+        let body: [String: String] = ["email": Self.normalizedEmail(email)]
+        let data = try await post(path: "/auth/register/resend/", body: body)
+        return try JSONDecoder().decode(RegisterOtpResponse.self, from: data)
+    }
+
+    // MARK: Тарифы и подписка
+
+    func fetchPlans() async throws -> PlansResponse {
+        let data = try await get(path: "/subscriptions/plans/")
+        return try JSONDecoder().decode(PlansResponse.self, from: data)
+    }
+
+    func fetchSubscriptionStatus() async throws -> SubscriptionInfo {
+        let data = try await get(path: "/subscriptions/status/")
+        return try JSONDecoder().decode(SubscriptionStatusResponse.self, from: data).subscription
+    }
+
+    /// Сообщает серверу id транзакции. Факт покупки сервер проверяет у Apple сам.
+    @discardableResult
+    func verifyApplePurchase(transactionId: String) async throws -> SubscriptionInfo {
+        let data = try await postAuthJSONChecked(
+            path: "/subscriptions/apple/verify/",
+            json: ["transaction_id": transactionId]
+        )
+        return try JSONDecoder().decode(SubscriptionStatusResponse.self, from: data).subscription
+    }
+
+    private static func normalizedEmail(_ email: String) -> String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 }

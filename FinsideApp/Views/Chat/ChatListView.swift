@@ -1,20 +1,36 @@
 import SwiftUI
 
 struct ChatListView: View {
+    @Environment(AppState.self) private var appState
     @Environment(ChatService.self) private var chatService
     @State private var segment: ChannelsTopSegment = .notifications
     @State private var selectedSubFilter: String?
     @State private var navigationPath = NavigationPath()
     @State private var showNewChatSheet = false
     @State private var showNewApprovalSheet = false
+    @State private var approvalSheetContext: ApprovalSheetContext?
+
+    private var canViewFinancialChats: Bool {
+        appState.user?.canViewFinancialChats ?? true
+    }
+
+    private var canResolveApprovals: Bool {
+        appState.user?.canResolveApprovals ?? true
+    }
+
+    private var effectiveSegment: ChannelsTopSegment {
+        canViewFinancialChats ? segment : .chats
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: 16) {
-                    segmentPicker
+                    if canViewFinancialChats {
+                        segmentPicker
+                    }
 
-                    if segment == .chats, !chatService.pendingApprovals.isEmpty {
+                    if effectiveSegment == .chats, canResolveApprovals, !chatService.pendingApprovals.isEmpty {
                         actionRequiredSection
                     }
 
@@ -32,6 +48,7 @@ struct ChatListView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
+                .padding(.bottom, 20)
             }
             .refreshable {
                 await chatService.loadConversations()
@@ -70,8 +87,25 @@ struct ChatListView: View {
                     navigationPath.append(conv)
                 }
             }
+            .sheet(item: $approvalSheetContext) { context in
+                ApprovalActionSheet(context: context) { convId in
+                    if let conv = chatService.conversations.first(where: { $0.id == convId }) {
+                        navigationPath.append(conv)
+                    }
+                }
+            }
             .onChange(of: segment) { _, _ in
                 selectedSubFilter = nil
+            }
+            .onAppear {
+                if !canViewFinancialChats {
+                    segment = .chats
+                }
+            }
+            .onChange(of: appState.user?.roleCode) { _, _ in
+                if !canViewFinancialChats {
+                    segment = .chats
+                }
             }
             .onChange(of: chatService.pendingNavigationConversationId) { _, newId in
                 flushPendingChatNavigation(newId: newId)
@@ -113,7 +147,7 @@ struct ChatListView: View {
     // MARK: - Action Required
 
     private var actionRequiredSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Image(systemName: "exclamationmark.circle.fill")
                     .foregroundStyle(.orange)
@@ -127,20 +161,21 @@ struct ChatListView: View {
                     .background(.orange.opacity(0.2))
                     .clipShape(Capsule())
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 14)
+            .padding(.bottom, 6)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(chatService.pendingApprovals) { item in
-                        PendingApprovalCard(item: item) {
-                            if let conv = chatService.conversations.first(where: { $0.id == item.conversationId }) {
-                                navigationPath.append(conv)
-                            }
-                        }
-                    }
+            ForEach(Array(chatService.pendingApprovals.enumerated()), id: \.element.id) { index, item in
+                if index > 0 {
+                    Divider()
+                        .padding(.leading, 70)
+                }
+                PendingApprovalCard(item: item) {
+                    approvalSheetContext = ApprovalSheetContext(item: item)
                 }
             }
         }
-        .padding()
+        .padding(.bottom, 4)
         .liquidGlassCard(cornerRadius: 16)
     }
 
@@ -156,7 +191,7 @@ struct ChatListView: View {
     }
 
     private var subFilterOptions: [SubFilterOption] {
-        switch segment {
+        switch effectiveSegment {
         case .notifications:
             let kindConversations = chatService.conversations.filter { $0.kind == "system" }
             var seen = Set<String>()
@@ -220,7 +255,7 @@ struct ChatListView: View {
 
     private var filteredConversations: [Conversation] {
         let bySegment: [Conversation]
-        switch segment {
+        switch effectiveSegment {
         case .notifications:
             bySegment = chatService.conversations.filter { $0.kind == "system" }
         case .chats:
@@ -231,7 +266,7 @@ struct ChatListView: View {
 
         guard let sub = selectedSubFilter else { return bySegment }
 
-        switch segment {
+        switch effectiveSegment {
         case .notifications:
             return bySegment.filter { $0.bankAccountIban == sub }
         case .chats:
@@ -288,14 +323,14 @@ struct ChatListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 12) {
-            Image(systemName: segment == .notifications ? "bell.slash" : "message")
+            Image(systemName: effectiveSegment == .notifications ? "bell.slash" : "message")
                 .font(.system(size: 48))
                 .foregroundStyle(.secondary)
-            Text(segment == .notifications ? "Нет уведомлений" : "Нет чатов")
+            Text(effectiveSegment == .notifications ? "Нет уведомлений" : "Нет чатов")
                 .font(.headline)
                 .foregroundStyle(.secondary)
             Text(
-                segment == .notifications
+                effectiveSegment == .notifications
                     ? "Сюда попадают системные каналы: импорты выписок и записи по счетам"
                     : "Чаты команды и внешних контрагентов появятся при обмене сообщениями и согласованиях"
             )

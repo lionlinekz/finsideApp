@@ -62,6 +62,17 @@ struct LoginView: View {
                 .padding(.top, 24)
                 .disabled(email.isEmpty || password.isEmpty || appState.isLoading)
 
+                HStack(spacing: 4) {
+                    Text("Нет аккаунта?")
+                        .foregroundStyle(.secondary)
+                    Button("Создать") {
+                        appState.startSignUp()
+                    }
+                    .fontWeight(.semibold)
+                }
+                .font(.subheadline)
+                .padding(.top, 20)
+
                 Spacer()
                 Spacer()
             }

@@ -149,6 +149,50 @@ struct ChatMessage: Codable, Identifiable, Hashable {
         case moneySent = "money_sent"
     }
 
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        conversationId = try c.decode(Int.self, forKey: .conversationId)
+        senderId = try c.decodeIfPresent(Int.self, forKey: .senderId)
+        senderName = try c.decodeIfPresent(String.self, forKey: .senderName) ?? ""
+        messageType = try c.decode(MessageType.self, forKey: .messageType)
+        text = try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        payload = try c.decodeIfPresent(MessagePayload.self, forKey: .payload) ?? MessagePayload()
+        isSystem = try c.decodeIfPresent(Bool.self, forKey: .isSystem) ?? false
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        approvalStatus = try c.decodeIfPresent(ApprovalStatus.self, forKey: .approvalStatus)
+        moneySent = try c.decodeIfPresent(Bool.self, forKey: .moneySent)
+        attachments = try c.decodeIfPresent([ChatAttachment].self, forKey: .attachments)
+    }
+
+    init(
+        id: Int,
+        conversationId: Int,
+        senderId: Int?,
+        senderName: String,
+        messageType: MessageType,
+        text: String,
+        payload: MessagePayload,
+        isSystem: Bool,
+        createdAt: String,
+        approvalStatus: ApprovalStatus?,
+        moneySent: Bool?,
+        attachments: [ChatAttachment]?
+    ) {
+        self.id = id
+        self.conversationId = conversationId
+        self.senderId = senderId
+        self.senderName = senderName
+        self.messageType = messageType
+        self.text = text
+        self.payload = payload
+        self.isSystem = isSystem
+        self.createdAt = createdAt
+        self.approvalStatus = approvalStatus
+        self.moneySent = moneySent
+        self.attachments = attachments
+    }
+
     var imageAttachments: [ChatAttachment] {
         (attachments ?? []).filter { $0.isImage }
     }
@@ -178,7 +222,49 @@ struct ChatMessage: Codable, Identifiable, Hashable {
         if let d = formatter.date(from: createdAt) { return d }
         return ISO8601DateFormatter().date(from: createdAt)
     }
+
+    /// Веб-инвойс без чат-зеркала получает синтетический id от дашборда.
+    static let invoiceSyntheticIdOffset = 1_000_000_000
+
+    var isInvoiceOnly: Bool {
+        payload.refType == "invoice" && conversationId == 0
+    }
+
+    var linkedInvoiceId: Int? {
+        if let refId = payload.refId { return refId }
+        guard id >= Self.invoiceSyntheticIdOffset else { return nil }
+        return id - Self.invoiceSyntheticIdOffset
+    }
 }
+
+// MARK: - Approval snapshot (инвойсы без чата / превью с дашборда)
+
+struct ApprovalSnapshot: Hashable {
+    let senderId: Int?
+    let senderName: String
+    let text: String
+    let payload: MessagePayload
+    let createdAt: String
+    let approvalStatus: ApprovalStatus?
+
+    func asMessage(messageId: Int, conversationId: Int) -> ChatMessage {
+        ChatMessage(
+            id: messageId,
+            conversationId: conversationId,
+            senderId: senderId,
+            senderName: senderName,
+            messageType: .approvalRequest,
+            text: text,
+            payload: payload,
+            isSystem: false,
+            createdAt: createdAt,
+            approvalStatus: approvalStatus ?? .pending,
+            moneySent: false,
+            attachments: nil
+        )
+    }
+}
+
 
 // MARK: - Payload
 
@@ -323,6 +409,17 @@ struct PendingApprovalItem: Codable, Identifiable {
         guard let amountStr = payload.amount,
               let amount = MoneyAmount(fromString: amountStr) else { return "" }
         return amount.formattedWithCurrency
+    }
+
+    var approvalSnapshot: ApprovalSnapshot {
+        ApprovalSnapshot(
+            senderId: nil,
+            senderName: senderName,
+            text: text,
+            payload: payload,
+            createdAt: createdAt,
+            approvalStatus: .pending
+        )
     }
 }
 

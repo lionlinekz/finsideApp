@@ -6,6 +6,7 @@ import UIKit
 
 struct ChatDetailView: View {
     let conversation: Conversation
+    @Environment(AppState.self) private var appState
     @Environment(ChatService.self) private var chatService
     @Environment(\.colorScheme) private var colorScheme
     @State private var messageText = ""
@@ -29,6 +30,10 @@ struct ChatDetailView: View {
         let preview: UIImage
         let fileName: String
         let mimeType: String
+    }
+
+    private var canViewFinancialChats: Bool {
+        appState.user?.canViewFinancialChats ?? true
     }
 
     private var messages: [ChatMessage] {
@@ -229,17 +234,21 @@ struct ChatDetailView: View {
             case .approvalRequest:
                 ApprovalWidgetCell(message: msg)
             case .importSummary:
-                ImportSummaryCell(
-                    message: msg,
-                    refreshToken: categorizationRefreshToken
-                ) {
-                    categorizationLaunch = CategorizationLaunch(
-                        uploadId: msg.payload.uploadId,
-                        iban: msg.payload.iban
-                    )
+                if canViewFinancialChats {
+                    ImportSummaryCell(
+                        message: msg,
+                        refreshToken: categorizationRefreshToken
+                    ) {
+                        categorizationLaunch = CategorizationLaunch(
+                            uploadId: msg.payload.uploadId,
+                            iban: msg.payload.iban
+                        )
+                    }
                 }
             case .operationLog:
-                OperationLogCell(message: msg)
+                if canViewFinancialChats {
+                    OperationLogCell(message: msg)
+                }
             }
         }
     }

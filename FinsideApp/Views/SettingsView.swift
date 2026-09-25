@@ -3,6 +3,10 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
 
+    private var canManageBusiness: Bool {
+        appState.user?.canManageBusinessSettings ?? true
+    }
+
     var body: some View {
         @Bindable var appState = appState
         NavigationStack {
@@ -25,36 +29,38 @@ struct SettingsView: View {
                     Label("Конфиденциальность", systemImage: "lock")
                 }
 
-                Section("Бизнес") {
-                    NavigationLink {
-                        TeamUsersView()
-                    } label: {
-                        Label("Пользователи", systemImage: "person.3")
-                    }
-                    NavigationLink {
-                        CompanySettingsView()
-                    } label: {
-                        Label("Компания", systemImage: "building.2.crop.circle")
-                    }
-                    NavigationLink {
-                        BranchesView()
-                    } label: {
-                        Label("Филиалы", systemImage: "mappin.and.ellipse")
-                    }
-                    NavigationLink {
-                        BankAccountsView()
-                    } label: {
-                        Label("Банковские счета", systemImage: "building.columns")
-                    }
-                    NavigationLink {
-                        CategoriesView()
-                    } label: {
-                        Label("Категории", systemImage: "folder")
-                    }
-                    NavigationLink {
-                        CategoryAutomationRulesView()
-                    } label: {
-                        Label("Правила категорий", systemImage: "wand.and.stars")
+                if canManageBusiness {
+                    Section("Бизнес") {
+                        NavigationLink {
+                            TeamUsersView()
+                        } label: {
+                            Label("Пользователи", systemImage: "person.3")
+                        }
+                        NavigationLink {
+                            CompanySettingsView()
+                        } label: {
+                            Label("Компания", systemImage: "building.2.crop.circle")
+                        }
+                        NavigationLink {
+                            BranchesView()
+                        } label: {
+                            Label("Филиалы", systemImage: "mappin.and.ellipse")
+                        }
+                        NavigationLink {
+                            BankAccountsView()
+                        } label: {
+                            Label("Банковские счета", systemImage: "building.columns")
+                        }
+                        NavigationLink {
+                            CategoriesView()
+                        } label: {
+                            Label("Категории", systemImage: "folder")
+                        }
+                        NavigationLink {
+                            CategoryAutomationRulesView()
+                        } label: {
+                            Label("Правила категорий", systemImage: "wand.and.stars")
+                        }
                     }
                 }
 

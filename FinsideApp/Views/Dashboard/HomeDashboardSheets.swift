@@ -178,6 +178,153 @@ struct CashBalanceHintSheet: View {
     }
 }
 
+/// Форма внесения/обновления остатка наличных в кассе (точке).
+struct CashBalanceEntrySheet: View {
+    let register: CashRegister
+    var onSaved: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var amountDigits: String
+    @State private var date: Date
+    @State private var isSaving = false
+    @State private var errorText: String?
+
+    init(register: CashRegister, onSaved: @escaping () -> Void) {
+        self.register = register
+        self.onSaved = onSaved
+        if let bal = register.balance {
+            _amountDigits = State(initialValue: String(Int(bal.rounded())))
+        } else {
+            _amountDigits = State(initialValue: "")
+        }
+        let initialDate: Date = {
+            if let iso = register.balanceDate {
+                let f = DateFormatter()
+                f.dateFormat = "yyyy-MM-dd"
+                if let d = f.date(from: String(iso.prefix(10))) { return d }
+            }
+            return Date()
+        }()
+        _date = State(initialValue: initialDate)
+    }
+
+    private var amountValue: Int? {
+        let cleaned = amountDigits.filter(\.isNumber)
+        return cleaned.isEmpty ? nil : Int(cleaned)
+    }
+
+    private var formattedAmount: String {
+        guard let v = amountValue else { return "" }
+        return DashboardMoney.formatTenge(Double(v))
+    }
+
+    private var canSave: Bool {
+        amountValue != nil && !isSaving
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("Касса", value: register.label)
+                    if let company = register.companyName, !company.isEmpty {
+                        LabeledContent("Филиал", value: company)
+                    }
+                } footer: {
+                    Text(register.pointId == nil
+                         ? "Общая касса — наличные без привязки к точке."
+                         : "Остаток наличных в этой точке на выбранную дату.")
+                }
+
+                Section("Остаток") {
+                    HStack {
+                        TextField("0", text: $amountDigits)
+                            .keyboardType(.numberPad)
+                            .font(.title3.monospacedDigit().weight(.semibold))
+                            .onChange(of: amountDigits) { _, newValue in
+                                let filtered = newValue.filter(\.isNumber)
+                                if filtered != newValue { amountDigits = filtered }
+                            }
+                        Spacer()
+                        Text("₸")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    if !formattedAmount.isEmpty {
+                        Text(formattedAmount)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Дата") {
+                    DatePicker(
+                        "Дата остатка",
+                        selection: $date,
+                        in: ...Date(),
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.compact)
+                }
+
+                if let errorText {
+                    Section {
+                        Label(errorText, systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                            .font(.subheadline)
+                    }
+                }
+            }
+            .navigationTitle(register.hasBalance ? "Обновить остаток" : "Внести остаток")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        if isSaving {
+                            ProgressView()
+                        } else {
+                            Text("Сохранить")
+                        }
+                    }
+                    .disabled(!canSave)
+                }
+            }
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    @MainActor
+    private func save() async {
+        guard let amount = amountValue else { return }
+        isSaving = true
+        errorText = nil
+        defer { isSaving = false }
+
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let dateStr = f.string(from: date)
+
+        do {
+            try await APIService.shared.saveCashBalance(
+                pointId: register.pointId,
+                amount: amount,
+                date: dateStr
+            )
+            onSaved()
+            dismiss()
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+}
+
 struct MetricComparisonSheet: View {
     let title: String
     let tint: Color
@@ -308,9 +455,10 @@ struct ChartDaySheet: View {
 struct HomeApprovalsSheet: View {
     let stats: DashboardApprovalStats
     let periodLabel: String
-    var onOpenConversation: (Int) -> Void
+    var onOpenChat: (Int) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var approvalSheetContext: ApprovalSheetContext?
 
     var body: some View {
         NavigationStack {
@@ -363,13 +511,19 @@ struct HomeApprovalsSheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
+            .sheet(item: $approvalSheetContext) { context in
+                ApprovalActionSheet(context: context) { convId in
+                    if convId > 0 {
+                        onOpenChat(convId)
+                    }
+                }
+            }
         }
     }
 
     private func approvalRow(_ item: DashboardApprovalItem) -> some View {
         Button {
-            dismiss()
-            onOpenConversation(item.conversationId)
+            approvalSheetContext = ApprovalSheetContext(item: item)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
