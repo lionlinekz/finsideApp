@@ -8,6 +8,7 @@ enum KeychainService {
         case accessToken = "access_token"
         case refreshToken = "refresh_token"
         case pinHash = "pin_hash"
+        case pinFailedAttempts = "pin_failed_attempts"
         case apnsToken = "apns_token"
     }
 
@@ -74,6 +75,7 @@ enum KeychainService {
         delete(key: .accessToken)
         delete(key: .refreshToken)
         delete(key: .pinHash)
+        delete(key: .pinFailedAttempts)
         AppGroupTokenStore.clearAccessTokenForShareExtension()
     }
 

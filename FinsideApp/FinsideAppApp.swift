@@ -98,8 +98,15 @@ struct RootView: View {
         }
         .animation(.easeInOut(duration: 0.3), value: appState.currentScreen)
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            scheduleConsumeShareImportPending()
+            switch phase {
+            case .background:
+                appState.appDidEnterBackground()
+            case .active:
+                appState.appDidBecomeActive()
+                scheduleConsumeShareImportPending()
+            default:
+                break
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             scheduleConsumeShareImportPending()

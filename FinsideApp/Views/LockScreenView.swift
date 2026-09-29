@@ -3,7 +3,6 @@ import SwiftUI
 struct LockScreenView: View {
     @Environment(AppState.self) private var appState
     @State private var pin = ""
-    @State private var attempts = 0
     @State private var shake = false
 
     var body: some View {
@@ -68,12 +67,8 @@ struct LockScreenView: View {
     }
 
     private func handlePinEntered() {
-        if appState.verifyPin(pin) {
-            appState.currentScreen = .main
-            Task { await appState.refreshAuthenticatedUser() }
-        } else {
-            attempts += 1
-            appState.errorMessage = "Неверный PIN"
+        // Разблокировка, лимит попыток и проверка подписки — в AppState.
+        if !appState.unlockWithPin(pin), appState.currentScreen == .lockScreen {
             withAnimation(.default.speed(3).repeatCount(3, autoreverses: true)) {
                 shake = true
             }

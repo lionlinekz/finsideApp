@@ -226,6 +226,7 @@ final class AppState {
             .map { String(format: "%02x", $0) }
             .joined()
         KeychainService.save(key: .pinHash, value: hash)
+        KeychainService.delete(key: .pinFailedAttempts)
         currentScreen = .main
     }
 
@@ -237,17 +238,31 @@ final class AppState {
         return hash == stored
     }
 
-    func unlockWithPin(_ pin: String) {
+    /// Сколько раз подряд можно ошибиться с PIN, прежде чем разлогинить.
+    /// PIN всего из 4 цифр — без лимита он подбирается перебором.
+    static let maxPinAttempts = 10
+
+    /// Возвращает true, если PIN верный и приложение разблокировано.
+    @discardableResult
+    func unlockWithPin(_ pin: String) -> Bool {
         if verifyPin(pin) {
-            currentScreen = .main
-            Task {
-                await refreshAuthenticatedUser()
-                // Подписка могла закончиться, пока приложение было закрыто.
-                if user?.needsPaywall == true { currentScreen = .paywall }
-            }
-        } else {
-            errorMessage = "Неверный PIN"
+            KeychainService.delete(key: .pinFailedAttempts)
+            errorMessage = nil
+            unlockToMain()
+            return true
         }
+
+        // Счётчик в Keychain, чтобы перезапуск приложения его не сбрасывал.
+        let failed = (KeychainService.read(key: .pinFailedAttempts).flatMap(Int.init) ?? 0) + 1
+        if failed >= Self.maxPinAttempts {
+            logout()
+            errorMessage = "Слишком много неверных попыток PIN. Войдите заново"
+            return false
+        }
+        KeychainService.save(key: .pinFailedAttempts, value: String(failed))
+        let left = Self.maxPinAttempts - failed
+        errorMessage = left <= 3 ? "Неверный PIN. Осталось попыток: \(left)" : "Неверный PIN"
+        return false
     }
 
     // MARK: - Biometric
@@ -255,10 +270,44 @@ final class AppState {
     func unlockWithBiometrics() async {
         let success = await BiometricService.authenticate()
         if success {
-            currentScreen = .main
+            KeychainService.delete(key: .pinFailedAttempts)
+            errorMessage = nil
+            unlockToMain()
+        }
+    }
+
+    /// Общий выход с экрана блокировки: сразу на главный, затем сверка подписки.
+    private func unlockToMain() {
+        currentScreen = .main
+        Task {
             await refreshAuthenticatedUser()
+            // Подписка могла закончиться, пока приложение было закрыто.
             if user?.needsPaywall == true { currentScreen = .paywall }
         }
+    }
+
+    // MARK: - Блокировка при сворачивании
+
+    /// Сколько приложение может пробыть в фоне без повторного ввода PIN.
+    private static let backgroundLockGrace: TimeInterval = 30
+    private var enteredBackgroundAt: Date?
+
+    func appDidEnterBackground() {
+        enteredBackgroundAt = Date()
+    }
+
+    /// Вызывается при возврате в приложение: если в фоне провели дольше
+    /// `backgroundLockGrace`, снова показываем экран PIN.
+    func appDidBecomeActive() {
+        guard let since = enteredBackgroundAt else { return }
+        enteredBackgroundAt = nil
+        guard Date().timeIntervalSince(since) >= Self.backgroundLockGrace,
+              currentScreen == .main,
+              KeychainService.hasTokens,
+              KeychainService.hasPin
+        else { return }
+        errorMessage = nil
+        currentScreen = .lockScreen
     }
 
     /// Обновляет `user` с сервера (аватар и т.д.), если есть сохранённые токены.
