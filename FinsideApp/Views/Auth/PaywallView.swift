@@ -15,6 +15,7 @@ struct PaywallView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var isRestoring = false
+    @State private var isActivatingWithoutPurchase = false
 
     var body: some View {
         NavigationStack {
@@ -67,6 +68,12 @@ struct PaywallView: View {
                     purchaseButton
                 }
 
+                #if DEBUG
+                if !hasPurchasableProduct {
+                    debugActivation
+                }
+                #endif
+
                 footer
             }
         }
@@ -107,6 +114,57 @@ struct PaywallView: View {
         .padding(.horizontal, 32)
         .padding(.top, 40)
     }
+
+    /// Купить нечего: либо сервер не отдал тарифов, либо StoreKit не нашёл
+    /// продукты (подписка ещё не заведена в App Store Connect).
+    private var hasPurchasableProduct: Bool {
+        plans.contains { store.product(for: $0.appleProductId) != nil }
+    }
+
+    #if DEBUG
+    /// Обход оплаты для отладки. Только в DEBUG-сборках и только если сервер
+    /// это разрешил (ALLOW_DEV_SUBSCRIPTION_ACTIVATION). В релиз не попадает.
+    ///
+    /// Показывается, когда купить нечего — иначе на проде, где у тарифа
+    /// заполнен apple_product_id, а продукта в App Store Connect ещё нет,
+    /// экран оказывался тупиком: карточка «недоступен» и серая кнопка.
+    @ViewBuilder
+    private var debugActivation: some View {
+        VStack(spacing: 8) {
+            Divider()
+                .padding(.vertical, 16)
+
+            if !plans.isEmpty {
+                Text("Продукты не пришли из App Store — подписка ещё не заведена в App Store Connect.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 4)
+            }
+
+            Button {
+                Task { await activateWithoutPurchase() }
+            } label: {
+                if isActivatingWithoutPurchase {
+                    ProgressView()
+                        .frame(maxWidth: .infinity, minHeight: 22)
+                } else {
+                    Text("Продолжить без тарифа")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity, minHeight: 22)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .disabled(isActivatingWithoutPurchase)
+
+            Text("Отладочный режим, в релизе кнопки нет")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.horizontal, 32)
+    }
+    #endif
 
     private var purchaseButton: some View {
         Button {
@@ -204,6 +262,21 @@ struct PaywallView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    #if DEBUG
+    /// Включить подписку без оплаты. Сервер откажет, если это не разрешено.
+    private func activateWithoutPurchase() async {
+        isActivatingWithoutPurchase = true
+        errorMessage = nil
+        defer { isActivatingWithoutPurchase = false }
+        do {
+            try await APIService.shared.devActivateSubscription()
+            appState.subscriptionActivated()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+    #endif
 
     private func restore() async {
         isRestoring = true

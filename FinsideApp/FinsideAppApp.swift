@@ -91,6 +91,9 @@ struct RootView: View {
             case .lockScreen:
                 LockScreenView()
                     .transition(.opacity)
+            case .onboardingTasks:
+                OnboardingTasksView()
+                    .transition(.opacity)
             case .main:
                 MainTabView()
                     .transition(.opacity)

@@ -251,6 +251,23 @@ final class APIService {
         return resp.user
     }
 
+    /// Задача онбординга «кто ты»: имя, фамилия, телефон и опциональное селфи.
+    @discardableResult
+    func updateProfile(
+        firstName: String,
+        lastName: String,
+        phone: String,
+        selfie: (data: Data, fileName: String, mimeType: String)?
+    ) async throws -> UserInfo {
+        let data = try await uploadProfileForm(
+            path: "/auth/profile/",
+            fields: ["first_name": firstName, "last_name": lastName, "phone": phone],
+            file: selfie.map { (field: "selfie", data: $0.data, fileName: $0.fileName, mimeType: $0.mimeType) }
+        )
+        let resp = try JSONDecoder().decode(MeResponse.self, from: data)
+        return resp.user
+    }
+
     // MARK: - Dashboard
 
     func dashboard(period: String, date: String? = nil) async throws -> DashboardResponse {
@@ -1233,6 +1250,71 @@ final class APIService {
         }
     }
 
+    /// Текстовые поля формы плюс не более одного файла — ровно то, что нужно
+    /// для «кто ты» в онбординге. Отдельно от `uploadMultipart`: там один файл
+    /// без текстовых полей, здесь наоборот текст в основе, файл опционален.
+    private func uploadProfileForm(
+        path: String,
+        fields: [String: String],
+        file: (field: String, data: Data, fileName: String, mimeType: String)?,
+        isRetry: Bool = false
+    ) async throws -> Data {
+        guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
+        let boundary = UUID().uuidString
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token = KeychainService.read(key: .accessToken)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        var body = Data()
+        for (name, value) in fields {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".data(using: .utf8)!)
+            body.append(value.data(using: .utf8) ?? Data())
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        if let file {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append(
+                "Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.fileName)\"\r\n"
+                    .data(using: .utf8)!
+            )
+            body.append("Content-Type: \(file.mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(file.data)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+        request.httpBody = body
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse {
+                if http.statusCode == 401 {
+                    if !isRetry {
+                        _ = try await refreshTokens()
+                        return try await uploadProfileForm(path: path, fields: fields, file: file, isRetry: true)
+                    }
+                    throw APIError.unauthorized
+                }
+                if !(200...299).contains(http.statusCode) {
+                    if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+                       !errResp.error.isEmpty {
+                        throw APIError.serverError(errResp.error)
+                    }
+                    throw APIError.serverError("Ошибка сервера (\(http.statusCode))")
+                }
+            }
+            return data
+        } catch let err as APIError {
+            throw err
+        } catch {
+            throw APIError.networkError(error)
+        }
+    }
+
     private func get(path: String, isRetry: Bool = false) async throws -> Data {
         guard let url = URL(string: baseURL + path) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
@@ -1472,6 +1554,20 @@ extension APIService {
         let data = try await postAuthJSONChecked(
             path: "/subscriptions/apple/verify/",
             json: ["transaction_id": transactionId]
+        )
+        return try JSONDecoder().decode(SubscriptionStatusResponse.self, from: data).subscription
+    }
+
+    /// Включает подписку без оплаты. Только для отладки.
+    ///
+    /// На сервере закрыто настройкой ALLOW_DEV_SUBSCRIPTION_ACTIVATION, в
+    /// приложении вызывается только из DEBUG-сборок. В релизе этого пути нет:
+    /// обход оплаты и прямая причина отклонения в App Review.
+    @discardableResult
+    func devActivateSubscription() async throws -> SubscriptionInfo {
+        let data = try await postAuthJSONChecked(
+            path: "/subscriptions/dev-activate/",
+            json: [:]
         )
         return try JSONDecoder().decode(SubscriptionStatusResponse.self, from: data).subscription
     }

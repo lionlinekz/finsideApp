@@ -36,6 +36,9 @@ enum AuthScreen: Equatable {
     case welcome
     case pinSetup
     case lockScreen
+    /// Обязательные задачи после оплаты. Пока не все выполнены, именно этот
+    /// экран показывается вместо главной — см. `AppState.onboardingTasksCompleted`.
+    case onboardingTasks
     case main
 }
 
@@ -44,6 +47,7 @@ enum AuthScreen: Equatable {
 final class AppState {
     private static let appearanceStorageKey = "finside.appearance"
     private static let tasksStorageKey = "finside.task_items.v1"
+    private static let onboardingTasksStorageKey = "finside.onboarding_tasks.v1"
 
     var currentScreen: AuthScreen = .login
     /// Deep link из Share Extension, если приложение ещё на экране PIN / логина.
@@ -55,6 +59,14 @@ final class AppState {
     /// Локальные задачи (как во Finpro), сохраняются на устройстве.
     var taskItems: [TaskItem] = []
 
+    /// Id выполненных задач онбординга. Хранится на устройстве — задача не
+    /// привязана к конкретному аккаунту, это разовое знакомство с приложением.
+    var completedOnboardingTaskIds: Set<String> = []
+
+    var onboardingTasksCompleted: Bool {
+        OnboardingTask.all.allSatisfy { completedOnboardingTaskIds.contains($0.id) }
+    }
+
     var appearancePreference: AppearancePreference {
         didSet {
             UserDefaults.standard.set(appearancePreference.rawValue, forKey: Self.appearanceStorageKey)
@@ -65,15 +77,25 @@ final class AppState {
         let saved = UserDefaults.standard.string(forKey: Self.appearanceStorageKey)
         self.appearancePreference = saved.flatMap { AppearancePreference(rawValue: $0) } ?? .system
         loadTasksFromStorage()
+        loadOnboardingTasksFromStorage()
         determineInitialScreen()
     }
 
     func determineInitialScreen() {
         if KeychainService.hasTokens {
             if KeychainService.hasPin {
+                // PIN уже стоит — значит, подписку проверили при предыдущем
+                // входе. `unlockToMain()` перепроверит её снова после ввода PIN.
                 currentScreen = .lockScreen
             } else {
+                // PIN не задан — прошлый запуск прервался до онбординга,
+                // возможно прямо на пайволле. Показываем pinSetup сразу, но
+                // сверяем подписку и возвращаем на пайволл, если она не оплачена.
                 currentScreen = .pinSetup
+                Task {
+                    await refreshAuthenticatedUser()
+                    if user?.needsPaywall == true { currentScreen = .paywall }
+                }
             }
         } else {
             currentScreen = .login
@@ -104,7 +126,7 @@ final class AppState {
         if user?.needsPaywall == true {
             currentScreen = .paywall
         } else if KeychainService.hasPin {
-            currentScreen = .main
+            routeToMainOrOnboarding()
         } else {
             currentScreen = .pinSetup
         }
@@ -216,7 +238,11 @@ final class AppState {
 
     /// Приветственный экран закрыт.
     func finishWelcome() {
-        currentScreen = KeychainService.hasPin ? .main : .pinSetup
+        if KeychainService.hasPin {
+            routeToMainOrOnboarding()
+        } else {
+            currentScreen = .pinSetup
+        }
     }
 
     // MARK: - PIN
@@ -227,7 +253,7 @@ final class AppState {
             .joined()
         KeychainService.save(key: .pinHash, value: hash)
         KeychainService.delete(key: .pinFailedAttempts)
-        currentScreen = .main
+        routeToMainOrOnboarding()
     }
 
     func verifyPin(_ pin: String) -> Bool {
@@ -278,12 +304,17 @@ final class AppState {
 
     /// Общий выход с экрана блокировки: сразу на главный, затем сверка подписки.
     private func unlockToMain() {
-        currentScreen = .main
+        routeToMainOrOnboarding()
         Task {
             await refreshAuthenticatedUser()
             // Подписка могла закончиться, пока приложение было закрыто.
             if user?.needsPaywall == true { currentScreen = .paywall }
         }
+    }
+
+    /// Главная доступна только после обязательных задач онбординга.
+    private func routeToMainOrOnboarding() {
+        currentScreen = onboardingTasksCompleted ? .main : .onboardingTasks
     }
 
     // MARK: - Блокировка при сворачивании
@@ -302,7 +333,7 @@ final class AppState {
         guard let since = enteredBackgroundAt else { return }
         enteredBackgroundAt = nil
         guard Date().timeIntervalSince(since) >= Self.backgroundLockGrace,
-              currentScreen == .main,
+              currentScreen == .main || currentScreen == .onboardingTasks,
               KeychainService.hasTokens,
               KeychainService.hasPin
         else { return }
@@ -318,6 +349,26 @@ final class AppState {
         } catch {
             // истёк токен — остаёмся без обновления; сеть восстановится при следующем запросе
         }
+    }
+
+    // MARK: - Онбординг
+
+    /// Отмечает задачу выполненной и, если это была последняя, открывает главную.
+    func completeOnboardingTask(_ id: String) {
+        guard completedOnboardingTaskIds.insert(id).inserted else { return }
+        persistOnboardingTasks()
+        if currentScreen == .onboardingTasks, onboardingTasksCompleted {
+            currentScreen = .main
+        }
+    }
+
+    private func loadOnboardingTasksFromStorage() {
+        let ids = UserDefaults.standard.stringArray(forKey: Self.onboardingTasksStorageKey) ?? []
+        completedOnboardingTaskIds = Set(ids)
+    }
+
+    private func persistOnboardingTasks() {
+        UserDefaults.standard.set(Array(completedOnboardingTaskIds), forKey: Self.onboardingTasksStorageKey)
     }
 
     // MARK: - Logout

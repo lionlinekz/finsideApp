@@ -234,6 +234,7 @@ struct SignUpView: View {
 enum AuthLinks {
     static let terms = URL(string: "https://finside.pro/terms/")!
     static let privacy = URL(string: "https://finside.pro/static/docs/privacy_policy.pdf")!
+    static let telegram = URL(string: "https://t.me/finsidepro")!
 }
 
 // MARK: - Поле ввода

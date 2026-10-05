@@ -194,7 +194,7 @@ struct OtpVerificationView: View {
             }
             .padding(.top, 14)
 
-            Text("Обычно занимает несколько секунд")
+            Text("Обычно занимает минуту")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 6)
