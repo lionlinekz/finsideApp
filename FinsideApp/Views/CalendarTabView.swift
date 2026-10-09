@@ -12,6 +12,7 @@ struct CalendarTabView: View {
     @State private var didScrollToToday = false
     @State private var swipeForward = true
     @State private var showAddNote = false
+    @State private var activePlannedPayment: CalendarEvent?
 
     private let calendar = Calendar.current
     private let ruLocale = Locale(identifier: "ru_RU")
@@ -180,6 +181,13 @@ struct CalendarTabView: View {
                 AddNoteSheet(initialDueDate: selectedDate) { title, deadline, priority in
                     appState.addUserTask(title: title, deadline: deadline, priority: priority)
                     DashboardHaptics.lightImpact()
+                }
+            }
+            .sheet(item: $activePlannedPayment) { event in
+                PlannedPaymentDetailView(event: event) { updated in
+                    if let idx = events.firstIndex(where: { $0.id == updated.id }) {
+                        events[idx] = updated
+                    }
                 }
             }
             .task { await loadEvents() }
@@ -457,9 +465,13 @@ struct CalendarTabView: View {
                     emptyFilterCard(statusFilter)
                 } else {
                     ForEach(statusEvents) { event in
-                        CalendarEventRow(event: event) {
-                            await toggleEvent(event)
-                        }
+                        CalendarEventRow(
+                            event: event,
+                            onToggle: { await toggleEvent(event) },
+                            onOpenDetail: event.type == .plannedPayment
+                                ? { activePlannedPayment = event }
+                                : nil
+                        )
                     }
                     ForEach(statusTasks) { task in
                         CalendarTaskRow(task: task, showRelativeDay: true)
@@ -484,9 +496,13 @@ struct CalendarTabView: View {
                     emptyDayCard
                 } else {
                     ForEach(eventsForSelectedDate) { event in
-                        CalendarEventRow(event: event) {
-                            await toggleEvent(event)
-                        }
+                        CalendarEventRow(
+                            event: event,
+                            onToggle: { await toggleEvent(event) },
+                            onOpenDetail: event.type == .plannedPayment
+                                ? { activePlannedPayment = event }
+                                : nil
+                        )
                     }
 
                     if showTasks {
@@ -575,9 +591,13 @@ struct CalendarTabView: View {
                         .padding(.top, 8)
 
                     ForEach(Array(upcoming)) { event in
-                        CalendarEventRow(event: event) {
-                            await toggleEvent(event)
-                        }
+                        CalendarEventRow(
+                            event: event,
+                            onToggle: { await toggleEvent(event) },
+                            onOpenDetail: event.type == .plannedPayment
+                                ? { activePlannedPayment = event }
+                                : nil
+                        )
                     }
                 }
             }
@@ -624,6 +644,9 @@ struct CalendarTabView: View {
 struct CalendarEventRow: View {
     let event: CalendarEvent
     let onToggle: () async -> Void
+    /// Открыть детали планового платежа (сумма/дата/закрытие). `nil` — у типа
+    /// события деталей нет, строка остаётся только переключателем.
+    var onOpenDetail: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isToggling = false
@@ -691,6 +714,15 @@ struct CalendarEventRow: View {
                         .foregroundStyle(.tertiary)
                         .lineLimit(2)
                 }
+            }
+            .contentShape(.rect)
+            .onTapGesture { onOpenDetail?() }
+
+            if onOpenDetail != nil {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 2)
             }
         }
         .padding(12)

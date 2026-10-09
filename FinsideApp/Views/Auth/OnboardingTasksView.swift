@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Обязательные задачи после оплаты. Показывается вместо главной, пока не
 /// выполнены все пункты — см. `AppState.onboardingTasksCompleted`.
@@ -6,8 +7,12 @@ struct OnboardingTasksView: View {
     @Environment(AppState.self) private var appState
     @State private var activeTask: OnboardingTask?
 
+    private var completedIds: [String] {
+        appState.user?.onboardingCompletedTasks ?? []
+    }
+
     private var doneCount: Int {
-        OnboardingTask.all.filter { appState.completedOnboardingTaskIds.contains($0.id) }.count
+        OnboardingTask.all.filter { completedIds.contains($0.id) }.count
     }
 
     var body: some View {
@@ -45,7 +50,7 @@ struct OnboardingTasksView: View {
                     ForEach(OnboardingTask.all) { task in
                         TaskRow(
                             task: task,
-                            isDone: appState.completedOnboardingTaskIds.contains(task.id)
+                            isDone: completedIds.contains(task.id)
                         ) {
                             activeTask = task
                         }
@@ -75,6 +80,21 @@ struct OnboardingTasksView: View {
                 }
             case .profileForm:
                 ProfileOnboardingFormView {
+                    appState.completeOnboardingTask(task.id)
+                    activeTask = nil
+                }
+            case .companyForm:
+                CompanyOnboardingFormView {
+                    appState.completeOnboardingTask(task.id)
+                    activeTask = nil
+                }
+            case .pointsForm:
+                PointsOnboardingFormView {
+                    appState.completeOnboardingTask(task.id)
+                    activeTask = nil
+                }
+            case .tips:
+                TipsOnboardingView {
                     appState.completeOnboardingTask(task.id)
                     activeTask = nil
                 }
@@ -160,8 +180,6 @@ private struct OnboardingTaskModal: View {
     let task: OnboardingTask
     let onDone: () -> Void
 
-    @Environment(\.openURL) private var openURL
-
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -189,7 +207,7 @@ private struct OnboardingTaskModal: View {
 
             if let linkURL = task.linkURL, let linkLabel = task.linkLabel {
                 Button {
-                    openURL(linkURL)
+                    UIApplication.shared.open(linkURL)
                 } label: {
                     Text(linkLabel)
                         .fontWeight(.semibold)

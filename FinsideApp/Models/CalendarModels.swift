@@ -128,3 +128,31 @@ struct TypeSummary: Codable {
 struct ToggleEventResponse: Codable {
     let event: CalendarEvent
 }
+
+// MARK: - Подбор транзакции для планового платежа
+
+struct PlannedPaymentCandidate: Codable, Identifiable {
+    let id: Int
+    let amount: String
+    let date: String
+    let description: String
+    let bank: String
+
+    var formattedAmount: String {
+        DashboardMoney.formatTenge(Double(amount) ?? 0)
+    }
+
+    var formattedDate: String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        guard let parsed = f.date(from: date) else { return date }
+        let out = DateFormatter()
+        out.locale = Locale(identifier: "ru_RU")
+        out.dateFormat = "d MMMM"
+        return out.string(from: parsed)
+    }
+}
+
+struct PlannedPaymentCandidatesResponse: Codable {
+    let candidates: [PlannedPaymentCandidate]
+}

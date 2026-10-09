@@ -47,6 +47,9 @@ struct UserInfo: Codable {
     let companyName: String?
     /// Состояние подписки организации. По нему решается, вести ли на экран тарифов.
     let subscription: SubscriptionInfo?
+    /// Id выполненных задач обязательного онбординга — привязано к аккаунту,
+    /// не к устройству, чтобы чек-лист не возвращался на новом телефоне.
+    let onboardingCompletedTasks: [String]
 
     enum CodingKeys: String, CodingKey {
         case id, email
@@ -60,6 +63,7 @@ struct UserInfo: Codable {
         case roleCode = "role_code"
         case companyName = "company_name"
         case subscription
+        case onboardingCompletedTasks = "onboarding_completed_tasks"
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +80,7 @@ struct UserInfo: Codable {
         roleCode = try c.decodeIfPresent(String.self, forKey: .roleCode)
         companyName = try c.decodeIfPresent(String.self, forKey: .companyName)
         subscription = try c.decodeIfPresent(SubscriptionInfo.self, forKey: .subscription)
+        onboardingCompletedTasks = try c.decodeIfPresent([String].self, forKey: .onboardingCompletedTasks) ?? []
     }
 
     /// Платит за подписку владелец аккаунта, а не сотрудник.
@@ -247,6 +252,18 @@ final class APIService {
 
     func me() async throws -> UserInfo {
         let data = try await get(path: "/auth/me/")
+        let resp = try JSONDecoder().decode(MeResponse.self, from: data)
+        return resp.user
+    }
+
+    /// Отмечает задачу обязательного онбординга выполненной. Привязано к
+    /// аккаунту на сервере, не к устройству.
+    @discardableResult
+    func completeOnboardingTask(id: String) async throws -> UserInfo {
+        let data = try await postAuthJSONChecked(
+            path: "/auth/onboarding/complete/",
+            json: ["task_id": id]
+        )
         let resp = try JSONDecoder().decode(MeResponse.self, from: data)
         return resp.user
     }
@@ -596,6 +613,60 @@ final class APIService {
         return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
     }
 
+    // MARK: - Плановый платёж: редактирование
+
+    /// `scope`: "this" — только эта запись, "following" — эта и все последующие серии.
+    func updatePlannedPaymentAmount(id: Int, amount: String, scope: String) async throws -> CalendarEvent {
+        let data = try await postAuthJSONChecked(
+            path: "/calendar/planned-payments/\(id)/amount/",
+            json: ["amount": amount, "scope": scope]
+        )
+        return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
+    }
+
+    /// `date` в формате YYYY-MM-DD. `scope` как у `updatePlannedPaymentAmount`.
+    func updatePlannedPaymentDate(id: Int, date: String, scope: String) async throws -> CalendarEvent {
+        let data = try await postAuthJSONChecked(
+            path: "/calendar/planned-payments/\(id)/date/",
+            json: ["date": date, "scope": scope]
+        )
+        return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
+    }
+
+    /// Неразобранные транзакции из выписки рядом по дате — для ручного сопоставления.
+    func plannedPaymentMatchCandidates(id: Int) async throws -> [PlannedPaymentCandidate] {
+        let data = try await get(path: "/calendar/planned-payments/\(id)/match-candidates/")
+        if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
+           !errResp.error.isEmpty {
+            throw APIError.serverError(errResp.error)
+        }
+        return try JSONDecoder().decode(PlannedPaymentCandidatesResponse.self, from: data).candidates
+    }
+
+    /// Закрыть плановый платёж уже импортированной транзакцией из выписки.
+    func confirmPlannedPayment(id: Int, withTransactionId paymentId: Int) async throws -> CalendarEvent {
+        let data = try await postAuthJSONChecked(
+            path: "/calendar/planned-payments/\(id)/confirm-transaction/",
+            json: ["payment_id": paymentId]
+        )
+        return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
+    }
+
+    /// Закрыть плановый платёж квитанцией (PDF Kaspi) — сервер сам распознаёт сумму.
+    func confirmPlannedPayment(
+        id: Int,
+        withReceiptData data: Data,
+        fileName: String,
+        mimeType: String
+    ) async throws -> CalendarEvent {
+        let responseData = try await uploadProfileForm(
+            path: "/calendar/planned-payments/\(id)/confirm-receipt/",
+            fields: [:],
+            file: (field: "file", data: data, fileName: fileName, mimeType: mimeType)
+        )
+        return try JSONDecoder().decode(ToggleEventResponse.self, from: responseData).event
+    }
+
     // MARK: - Team / employees (настройки → пользователи)
 
     func teamSnapshot() async throws -> TeamSnapshot {
@@ -697,6 +768,27 @@ final class APIService {
     func branches() async throws -> [BranchCompany] {
         let data = try await get(path: "/branches/")
         return try JSONDecoder().decode(BranchesResponse.self, from: data).companies
+    }
+
+    /// Подсказка имени/адреса по ИИН/БИН из открытого реестра — задача онбординга «компания».
+    func binLookup(bin: String) async throws -> BinLookupResult {
+        let data = try await postAuthJSONChecked(path: "/branches/bin-lookup/", json: ["bin": bin])
+        return try JSONDecoder().decode(BinLookupResult.self, from: data)
+    }
+
+    /// Логотип компании грузится отдельно от `addCompany`: та отправляет JSON,
+    /// а файл — только multipart.
+    func uploadCompanyLogo(
+        companyId: Int,
+        data: Data,
+        fileName: String,
+        mimeType: String
+    ) async throws {
+        _ = try await uploadProfileForm(
+            path: "/branches/companies/\(companyId)/logo/",
+            fields: [:],
+            file: (field: "logo", data: data, fileName: fileName, mimeType: mimeType)
+        )
     }
 
     func addCompany(

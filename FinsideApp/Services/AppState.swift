@@ -33,7 +33,6 @@ enum AuthScreen: Equatable {
     case otp(email: String)
     /// Выбор тарифа. Показывается только владельцу без действующей подписки.
     case paywall
-    case welcome
     case pinSetup
     case lockScreen
     /// Обязательные задачи после оплаты. Пока не все выполнены, именно этот
@@ -47,7 +46,6 @@ enum AuthScreen: Equatable {
 final class AppState {
     private static let appearanceStorageKey = "finside.appearance"
     private static let tasksStorageKey = "finside.task_items.v1"
-    private static let onboardingTasksStorageKey = "finside.onboarding_tasks.v1"
 
     var currentScreen: AuthScreen = .login
     /// Deep link из Share Extension, если приложение ещё на экране PIN / логина.
@@ -59,12 +57,13 @@ final class AppState {
     /// Локальные задачи (как во Finpro), сохраняются на устройстве.
     var taskItems: [TaskItem] = []
 
-    /// Id выполненных задач онбординга. Хранится на устройстве — задача не
-    /// привязана к конкретному аккаунту, это разовое знакомство с приложением.
-    var completedOnboardingTaskIds: Set<String> = []
-
+    /// Выполненные задачи онбординга хранятся на сервере (`user`), привязаны
+    /// к аккаунту — не к устройству. Пока `user` не загружен, считаем, что
+    /// онбординг ещё не пройден: тот же приём, что и у `needsPaywall`, —
+    /// безопасный дефолт, который поправит ближайший `refreshAuthenticatedUser()`.
     var onboardingTasksCompleted: Bool {
-        OnboardingTask.all.allSatisfy { completedOnboardingTaskIds.contains($0.id) }
+        guard let done = user?.onboardingCompletedTasks else { return false }
+        return OnboardingTask.all.allSatisfy { done.contains($0.id) }
     }
 
     var appearancePreference: AppearancePreference {
@@ -77,7 +76,6 @@ final class AppState {
         let saved = UserDefaults.standard.string(forKey: Self.appearanceStorageKey)
         self.appearancePreference = saved.flatMap { AppearancePreference(rawValue: $0) } ?? .system
         loadTasksFromStorage()
-        loadOnboardingTasksFromStorage()
         determineInitialScreen()
     }
 
@@ -229,20 +227,16 @@ final class AppState {
 
     // MARK: - Подписка
 
-    /// Подписка оплачена — показываем приветствие.
+    /// Подписка оплачена — ведём дальше на PIN/онбординг, без промежуточного
+    /// приветственного экрана: он противоречил следующим обязательным шагам.
     func subscriptionActivated() {
         errorMessage = nil
-        currentScreen = .welcome
-        Task { await refreshAuthenticatedUser() }
-    }
-
-    /// Приветственный экран закрыт.
-    func finishWelcome() {
         if KeychainService.hasPin {
             routeToMainOrOnboarding()
         } else {
             currentScreen = .pinSetup
         }
+        Task { await refreshAuthenticatedUser() }
     }
 
     // MARK: - PIN
@@ -308,7 +302,12 @@ final class AppState {
         Task {
             await refreshAuthenticatedUser()
             // Подписка могла закончиться, пока приложение было закрыто.
-            if user?.needsPaywall == true { currentScreen = .paywall }
+            if user?.needsPaywall == true {
+                currentScreen = .paywall
+            } else if currentScreen == .onboardingTasks, onboardingTasksCompleted {
+                // Онбординг могли завершить на другом устройстве — кэш был устаревшим.
+                currentScreen = .main
+            }
         }
     }
 
@@ -353,22 +352,17 @@ final class AppState {
 
     // MARK: - Онбординг
 
-    /// Отмечает задачу выполненной и, если это была последняя, открывает главную.
+    /// Отмечает задачу выполненной на сервере (привязано к аккаунту) и, если
+    /// это была последняя, открывает главную. Сеть моргнула — задача просто
+    /// останется невыполненной, и пользователь откроет её снова при следующем визите.
     func completeOnboardingTask(_ id: String) {
-        guard completedOnboardingTaskIds.insert(id).inserted else { return }
-        persistOnboardingTasks()
-        if currentScreen == .onboardingTasks, onboardingTasksCompleted {
-            currentScreen = .main
+        Task {
+            guard let updated = try? await APIService.shared.completeOnboardingTask(id: id) else { return }
+            user = updated
+            if currentScreen == .onboardingTasks, onboardingTasksCompleted {
+                currentScreen = .main
+            }
         }
-    }
-
-    private func loadOnboardingTasksFromStorage() {
-        let ids = UserDefaults.standard.stringArray(forKey: Self.onboardingTasksStorageKey) ?? []
-        completedOnboardingTaskIds = Set(ids)
-    }
-
-    private func persistOnboardingTasks() {
-        UserDefaults.standard.set(Array(completedOnboardingTaskIds), forKey: Self.onboardingTasksStorageKey)
     }
 
     // MARK: - Logout

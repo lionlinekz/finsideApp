@@ -8,6 +8,15 @@ struct OnboardingTask: Identifiable {
         case acknowledgment
         /// Открыть форму «кто ты»: имя, фамилия, телефон, опциональное селфи.
         case profileForm
+        /// Открыть форму «компания»: ИИН/БИН с подтягиванием имени и адреса,
+        /// логотип и индустрия.
+        case companyForm
+        /// Открыть форму «точки»: есть ли физический адрес, и сколько их.
+        case pointsForm
+        /// Показать необязательные подсказки по продукту (выписка, менеджеры,
+        /// категории, правила) со ссылками на YouTube — чисто просветительское,
+        /// выполняется по «Хорошо» без каких-либо условий.
+        case tips
     }
 
     let id: String
@@ -49,5 +58,101 @@ struct OnboardingTask: Identifiable {
             linkURL: nil,
             linkLabel: nil
         ),
+        OnboardingTask(
+            id: "company_info",
+            title: "Заполните данные компании",
+            subtitle: "ИИН/БИН, логотип и индустрия",
+            icon: "building.2.fill",
+            kind: .companyForm,
+            modalTitle: "",
+            modalMessage: "",
+            linkURL: nil,
+            linkLabel: nil
+        ),
+        OnboardingTask(
+            id: "company_points",
+            title: "Добавьте точки",
+            subtitle: "Физические адреса и филиалы",
+            icon: "mappin.and.ellipse",
+            kind: .pointsForm,
+            modalTitle: "",
+            modalMessage: "",
+            linkURL: nil,
+            linkLabel: nil
+        ),
+        OnboardingTask(
+            id: "product_tips",
+            title: "Короткие подсказки по продукту",
+            subtitle: "Необязательно — просто чтобы знать, что есть",
+            icon: "lightbulb.fill",
+            kind: .tips,
+            modalTitle: "",
+            modalMessage: "",
+            linkURL: nil,
+            linkLabel: nil
+        ),
     ]
+}
+
+/// Один пункт необязательных подсказок по продукту (задача `product_tips`).
+/// `videoURL` пока `nil` везде — ссылок на YouTube ещё нет, подставить
+/// позже, когда появятся ролики.
+struct OnboardingTip: Identifiable {
+    let id: String
+    let title: String
+    let description: String
+    let icon: String
+    let videoURL: URL?
+
+    static let all: [OnboardingTip] = [
+        OnboardingTip(
+            id: "statement",
+            title: "Как добавить выписку",
+            description: "Загрузите банковскую выписку — операции разнесутся по категориям автоматически.",
+            icon: "doc.text.magnifyingglass",
+            videoURL: nil
+        ),
+        OnboardingTip(
+            id: "managers",
+            title: "Как добавить менеджеров",
+            description: "Пригласите сотрудников и раздайте им роли и доступы в настройках команды.",
+            icon: "person.2.fill",
+            videoURL: nil
+        ),
+        OnboardingTip(
+            id: "categories",
+            title: "Как настроить категории",
+            description: "Создайте свои категории и подкатегории доходов и расходов под ваш бизнес.",
+            icon: "square.grid.2x2.fill",
+            videoURL: nil
+        ),
+        OnboardingTip(
+            id: "rules",
+            title: "Как настроить свои правила",
+            description: "Автоматическая категоризация по правилам — чтобы похожие операции размечались сами.",
+            icon: "wand.and.stars",
+            videoURL: nil
+        ),
+    ]
+}
+
+/// Индустрия компании — фиксированный список для онбординга. На сервере
+/// хранится как обычный текст в `Company.direction`, без отдельного enum.
+enum CompanyIndustry: String, CaseIterable, Identifiable {
+    case retail = "Розничная торговля"
+    case wholesale = "Оптовая торговля"
+    case horeca = "Общественное питание"
+    case construction = "Строительство"
+    case logistics = "Транспорт и логистика"
+    case it = "IT и технологии"
+    case beautyHealth = "Красота и здоровье"
+    case services = "Услуги"
+    case manufacturing = "Производство"
+    case realEstate = "Недвижимость"
+    case education = "Образование"
+    case entertainment = "Развлечения"
+    case agriculture = "Сельское хозяйство"
+    case other = "Другое"
+
+    var id: String { rawValue }
 }

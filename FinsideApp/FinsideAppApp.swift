@@ -82,9 +82,6 @@ struct RootView: View {
             case .paywall:
                 PaywallView()
                     .transition(.opacity)
-            case .welcome:
-                WelcomeView()
-                    .transition(.opacity)
             case .pinSetup:
                 PinSetupView()
                     .transition(.opacity)

@@ -55,3 +55,16 @@ struct PointEditResponse: Codable {
     let ok: Bool
     let point: BranchPoint
 }
+
+/// Подсказка из открытого реестра по ИИН/БИН — не авторитетные данные,
+/// пользователь может их поправить перед сохранением компании.
+struct BinLookupResult: Codable {
+    let name: String
+    let address: String
+    let companyType: String
+
+    enum CodingKeys: String, CodingKey {
+        case name, address
+        case companyType = "company_type"
+    }
+}
