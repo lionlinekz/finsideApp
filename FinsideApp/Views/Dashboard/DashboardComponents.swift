@@ -28,8 +28,8 @@ enum DashboardHaptics {
 enum DashboardPalette {
     /// Поступления — золото.
     static let receipts = Color(red: 0.80, green: 0.63, blue: 0.13)
-    /// Расход — красный.
-    static let expense = Color(red: 1.0, green: 0.0, blue: 0.0)
+    /// Расход — #CE5A2E.
+    static let expense = Color(red: 206 / 255, green: 90 / 255, blue: 46 / 255)
     /// Остаток и положительный поток — изумрудный (#4CAE85).
     static let income = Color(red: 76 / 255, green: 174 / 255, blue: 133 / 255)
     /// Продажи — #1863DC.
@@ -44,17 +44,19 @@ enum DashboardPalette {
 /// Цикл из 5 цветов колец на главной (снаружи → внутрь):
 /// синий → зелёный → красный → золото → серебро.
 enum DashboardRingPalette {
-    /// 1. Продажи — #1863DC.
-    static let revenue = DashboardPalette.sales
+    /// 1. Продажи — #2A4A73 (синий). Своё значение, не alias на
+    /// `DashboardPalette.sales` — чтобы не красить этим же цветом другие
+    /// места в приложении, которые используют `DashboardPalette` напрямую.
+    static let revenue = Color(red: 0x2A / 255, green: 0x4A / 255, blue: 0x73 / 255)
 
     /// 2. Остаток — #4CAE85.
     static let balance = DashboardPalette.income
 
-    /// 3. Расходы — красный.
-    static let expense = DashboardPalette.expense
+    /// 3. Расходы — #D9674A (красный).
+    static let expense = Color(red: 0xD9 / 255, green: 0x67 / 255, blue: 0x4A / 255)
 
-    /// 4. Поступления — золото.
-    static let receipts = DashboardPalette.receipts
+    /// 4. Поступления — #C9A54E (жёлтый).
+    static let receipts = Color(red: 0xC9 / 255, green: 0xA5 / 255, blue: 0x4E / 255)
 
     /// 5. Налоги — серебро / графит.
     static func tax(_ scheme: ColorScheme) -> Color {

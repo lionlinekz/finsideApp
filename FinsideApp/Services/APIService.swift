@@ -143,12 +143,14 @@ struct DeleteAllTransactionsResponse: Codable {
     let deletedIncomes: Int
     let deletedPayments: Int
     let deletedStatementUploads: Int
+    let deletedImportMessages: Int
 
     enum CodingKeys: String, CodingKey {
         case ok
         case deletedIncomes = "deleted_incomes"
         case deletedPayments = "deleted_payments"
         case deletedStatementUploads = "deleted_statement_uploads"
+        case deletedImportMessages = "deleted_import_messages"
     }
 }
 
@@ -582,18 +584,11 @@ final class APIService {
         return try JSONDecoder().decode(ApprovalRequestCreateResponse.self, from: data)
     }
 
+    /// `needs_bank_account` в теле ошибки (IBAN не зарегистрирован) уже
+    /// распознаётся и пробрасывается как `APIError.needsBankAccount` внутри
+    /// `uploadMultipart` — отдельной проверки здесь не нужно.
     func uploadStatement(fileData: Data, fileName: String) async throws -> ImportStatementResponse {
         let data = try await uploadMultipart(path: "/chat/import-statement/", fileData: fileData, fileName: fileName)
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           json["needs_bank_account"] as? Bool == true {
-            let info = ImportNeedsBankAccount(
-                iban: json["iban"] as? String ?? "",
-                guessedBankCode: json["guessed_bank_code"] as? String ?? "",
-                guessedBankId: json["guessed_bank_id"] as? Int,
-                errorMessage: json["error"] as? String ?? "Банковский счёт не зарегистрирован"
-            )
-            throw APIError.needsBankAccount(info)
-        }
         return try JSONDecoder().decode(ImportStatementResponse.self, from: data)
     }
 
@@ -610,6 +605,34 @@ final class APIService {
 
     func toggleCalendarEvent(eventId: Int) async throws -> CalendarEvent {
         let data = try await postAuth(path: "/calendar/events/\(eventId)/toggle/", body: [:])
+        return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
+    }
+
+    // MARK: - Плановый платёж: создание
+
+    /// `date`/`endDate` в формате YYYY-MM-DD. `endDate` обязателен, если `isRecurring`.
+    /// Повтор — только ежемесячный (см. бэкенд).
+    @discardableResult
+    func addPlannedPayment(
+        amount: String,
+        date: String,
+        description: String,
+        categoryId: Int?,
+        subcategoryId: Int?,
+        isRecurring: Bool,
+        endDate: String?
+    ) async throws -> CalendarEvent {
+        var json: [String: Any] = [
+            "amount": amount,
+            "date": date,
+            "description": description,
+            "is_recurring": isRecurring,
+        ]
+        if let categoryId { json["category_id"] = categoryId }
+        if let subcategoryId { json["subcategory_id"] = subcategoryId }
+        if let endDate { json["end_date"] = endDate }
+
+        let data = try await postAuthJSONChecked(path: "/calendar/planned-payments/add/", json: json)
         return try JSONDecoder().decode(ToggleEventResponse.self, from: data).event
     }
 
@@ -1296,6 +1319,11 @@ final class APIService {
         let boundary = UUID().uuidString
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        // Импорт выписки разбирает и сохраняет записи построчно на сервере —
+        // на крупной выписке это легко дольше дефолтных 60с. Таймаут только
+        // у запроса, не у фоновой загрузки файла, так что это безопасно и
+        // для короткой квитанции с /attach-receipt/.
+        request.timeoutInterval = 180
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if let token = KeychainService.read(key: .accessToken)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
@@ -1327,6 +1355,20 @@ final class APIService {
                     throw APIError.unauthorized
                 }
                 if !(200...299).contains(http.statusCode) {
+                    // Импорт выписки кодирует «счёт не зарегистрирован» доп. полями
+                    // в том же JSON тела ошибки — распознаём их здесь, иначе
+                    // вызывающая сторона видит только обобщённый `.serverError`
+                    // и не может предложить завести счёт прямо в приложении.
+                    if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       json["needs_bank_account"] as? Bool == true {
+                        let info = ImportNeedsBankAccount(
+                            iban: json["iban"] as? String ?? "",
+                            guessedBankCode: json["guessed_bank_code"] as? String ?? "",
+                            guessedBankId: json["guessed_bank_id"] as? Int,
+                            errorMessage: json["error"] as? String ?? "Банковский счёт не зарегистрирован"
+                        )
+                        throw APIError.needsBankAccount(info)
+                    }
                     if let errResp = try? JSONDecoder().decode(ErrorResponse.self, from: data),
                        !errResp.error.isEmpty {
                         throw APIError.serverError(errResp.error)

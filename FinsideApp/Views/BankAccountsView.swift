@@ -174,6 +174,10 @@ struct BankAccountsView: View {
 // MARK: - Add Sheet
 
 struct AddBankAccountSheet: View {
+    /// Угаданные по IBAN банк/счёт — подставляются, когда сюда ведут из
+    /// импорта выписки, у которого счёт ещё не зарегистрирован.
+    var preselectBankCode: String?
+    var preselectBankId: Int?
     var onFinished: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -181,11 +185,27 @@ struct AddBankAccountSheet: View {
     @State private var banks: [BankRef] = []
     @State private var frequencies: [FrequencyOption] = []
     @State private var selectedBankId: Int = 0
-    @State private var iban = ""
+    /// `true`, когда банк подставлен по угадыванию из IBAN/формата выписки —
+    /// тогда поле показываем как факт, а не как выбор, чтобы не плодить
+    /// опечатки там, где мы и так уверены.
+    @State private var isBankAutoDetected = false
+    @State private var iban: String
     @State private var selectedFrequency = "EXISTING"
     @State private var isSubmitting = false
     @State private var formError: String?
     @State private var isLoadingBanks = true
+
+    init(
+        prefilledIban: String = "",
+        preselectBankCode: String? = nil,
+        preselectBankId: Int? = nil,
+        onFinished: @escaping () -> Void
+    ) {
+        self.preselectBankCode = preselectBankCode
+        self.preselectBankId = preselectBankId
+        self.onFinished = onFinished
+        _iban = State(initialValue: prefilledIban)
+    }
 
     var body: some View {
         Form {
@@ -195,10 +215,25 @@ struct AddBankAccountSheet: View {
                 }
             } else {
                 Section("Банк") {
-                    Picker("Банк", selection: $selectedBankId) {
-                        Text("Выберите…").tag(0)
-                        ForEach(banks) { b in
-                            Text(b.name).tag(b.id)
+                    if isBankAutoDetected, let bank = banks.first(where: { $0.id == selectedBankId }) {
+                        HStack {
+                            Label(bank.name, systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("Определён автоматически")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Button("Это другой банк") {
+                            isBankAutoDetected = false
+                        }
+                        .font(.footnote)
+                    } else {
+                        Picker("Банк", selection: $selectedBankId) {
+                            Text("Выберите…").tag(0)
+                            ForEach(banks) { b in
+                                Text(b.name).tag(b.id)
+                            }
                         }
                     }
                 }
@@ -258,8 +293,17 @@ struct AddBankAccountSheet: View {
             await MainActor.run {
                 banks = resp.banks
                 frequencies = resp.frequencies
-                if selectedBankId == 0, let first = resp.banks.first {
-                    selectedBankId = first.id
+                if selectedBankId == 0 {
+                    if let preselectBankId, resp.banks.contains(where: { $0.id == preselectBankId }) {
+                        selectedBankId = preselectBankId
+                        isBankAutoDetected = true
+                    } else if let preselectBankCode,
+                              let match = resp.banks.first(where: { $0.code == preselectBankCode }) {
+                        selectedBankId = match.id
+                        isBankAutoDetected = true
+                    } else if let first = resp.banks.first {
+                        selectedBankId = first.id
+                    }
                 }
                 isLoadingBanks = false
             }

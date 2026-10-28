@@ -12,6 +12,7 @@ struct CalendarTabView: View {
     @State private var didScrollToToday = false
     @State private var swipeForward = true
     @State private var showAddNote = false
+    @State private var showAddPlannedPayment = false
     @State private var activePlannedPayment: CalendarEvent?
 
     private let calendar = Calendar.current
@@ -160,14 +161,23 @@ struct CalendarTabView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 12) {
-                        Button {
-                            showAddNote = true
+                        Menu {
+                            Button {
+                                showAddNote = true
+                            } label: {
+                                Label("Заметка", systemImage: "note.text.badge.plus")
+                            }
+                            Button {
+                                showAddPlannedPayment = true
+                            } label: {
+                                Label("Плановый платёж", systemImage: "calendar.badge.plus")
+                            }
                         } label: {
                             Image(systemName: "square.and.pencil")
                                 .font(.system(size: 20, weight: .light))
                                 .symbolRenderingMode(.hierarchical)
                         }
-                        .accessibilityLabel("Новая заметка")
+                        .accessibilityLabel("Добавить")
 
                         if isLoading {
                             ProgressView()
@@ -188,6 +198,13 @@ struct CalendarTabView: View {
                     if let idx = events.firstIndex(where: { $0.id == updated.id }) {
                         events[idx] = updated
                     }
+                }
+            }
+            .sheet(isPresented: $showAddPlannedPayment) {
+                AddPlannedPaymentSheet(initialDate: selectedDate) { created in
+                    events.append(created)
+                    datesWithEvents.insert(created.dueDate)
+                    DashboardHaptics.lightImpact()
                 }
             }
             .task { await loadEvents() }

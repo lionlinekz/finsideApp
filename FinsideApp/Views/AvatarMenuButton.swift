@@ -118,19 +118,6 @@ private struct UserAvatarBadge: View {
         ZStack {
             Circle()
                 .fill(Color.accentColor)
-                .overlay {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.25),
-                                    Color.clear,
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
 
             Text(initialsText)
                 .font(.caption.bold())

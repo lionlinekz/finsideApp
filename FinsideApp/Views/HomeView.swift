@@ -731,6 +731,8 @@ struct HomeView: View {
             }
             .buttonStyle(.dashboardPressable)
             .accessibilityHint("Открыть форму нового расхода")
+
+            StatementUploadButton()
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())

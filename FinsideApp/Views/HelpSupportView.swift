@@ -89,7 +89,7 @@ struct HelpSupportView: View {
             NotificationCenter.default.post(name: .finsideLedgerDidChange, object: nil)
             banner = Banner(
                 message:
-                    "Удалено операций: доходов \(r.deletedIncomes), расходов \(r.deletedPayments). Загрузок выписок: \(r.deletedStatementUploads).",
+                    "Удалено операций: доходов \(r.deletedIncomes), расходов \(r.deletedPayments). Загрузок выписок: \(r.deletedStatementUploads). Сообщений об импорте в чате: \(r.deletedImportMessages).",
                 isError: false
             )
         } catch {
