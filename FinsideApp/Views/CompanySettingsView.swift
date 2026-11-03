@@ -43,7 +43,7 @@ struct CompanySettingsView: View {
             } else {
                 formContent
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Компания")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -54,7 +54,7 @@ struct CompanySettingsView: View {
     }
 
     private var formContent: some View {
-        Form {
+        Form { Group {
             if companies.count > 1 {
                 Section("Компания") {
                     Picker("Юрлицо", selection: $selectedCompanyId) {
@@ -109,7 +109,7 @@ struct CompanySettingsView: View {
                     .disabled(!canSave || isSaving)
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .onAppear {
             syncFormFromSelection()
         }

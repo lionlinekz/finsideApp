@@ -10,7 +10,7 @@ struct SettingsView: View {
     var body: some View {
         @Bindable var appState = appState
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     Label("Уведомления", systemImage: "bell")
                 }
@@ -72,13 +72,14 @@ struct SettingsView: View {
                     }
                     Label("О приложении", systemImage: "info.circle")
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Настройки")
             .toolbar {
                 #if os(iOS) || os(visionOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    AvatarMenuButton()
+                    AvatarMenuButton().appToolbarPill(circle: true)
                 }
+                .appHideSharedBackground()
                 #else
                 ToolbarItem(placement: .automatic) {
                     AvatarMenuButton()

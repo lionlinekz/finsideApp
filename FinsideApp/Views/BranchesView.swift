@@ -39,7 +39,7 @@ struct BranchesView: View {
             } else {
                 companiesList
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Филиалы")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -154,7 +154,7 @@ private struct BranchesListContent: View {
     var onDeletePoint: (BranchPoint) -> Void
 
     var body: some View {
-        List {
+        List { Group {
             ForEach(companies, id: \.id) { (company: BranchCompany) in
                 Section {
                     HStack(alignment: .top, spacing: 8) {
@@ -189,7 +189,7 @@ private struct BranchesListContent: View {
                     }
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .listStyle(.insetGrouped)
     }
 
@@ -276,7 +276,7 @@ struct AddCompanySheet: View {
     }
 
     var body: some View {
-        Form {
+        Form { Group {
             Section("Тип компании") {
                 Picker("Тип", selection: $companyType) {
                     Text("ИП").tag("IP")
@@ -311,7 +311,7 @@ struct AddCompanySheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Новая компания")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -384,7 +384,7 @@ struct EditCompanySheet: View {
     }
 
     var body: some View {
-        Form {
+        Form { Group {
             Section("Компания") {
                 LabeledContent("ИИН/БИН", value: company.bin)
                 LabeledContent("Тип", value: company.companyTypeLabel)
@@ -412,7 +412,7 @@ struct EditCompanySheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Компания")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -474,7 +474,7 @@ struct AddPointSheet: View {
     @State private var formError: String?
 
     var body: some View {
-        Form {
+        Form { Group {
             Section {
                 HStack {
                     Text("Компания")
@@ -494,7 +494,7 @@ struct AddPointSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Новый филиал")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

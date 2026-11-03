@@ -51,7 +51,7 @@ struct OtpVerificationView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 24)
-            .background(.background)
+            .background(Color.appPlainBackground)
             .animation(.easeInOut(duration: 0.25), value: stage)
             .onReceive(timer) { _ in
                 if stage == .entering, secondsLeft > 0 { secondsLeft -= 1 }
@@ -132,7 +132,7 @@ struct OtpVerificationView: View {
                     Text(character(at: index))
                         .font(.title.monospacedDigit().weight(.semibold))
                         .frame(width: 56, height: 64)
-                        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                        .background(.appSurface, in: .rect(cornerRadius: 12))
                         .overlay {
                             RoundedRectangle(cornerRadius: 12)
                                 .strokeBorder(

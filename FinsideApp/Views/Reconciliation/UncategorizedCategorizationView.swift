@@ -45,7 +45,7 @@ struct UncategorizedCategorizationView: View {
             } else {
                 listContent
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Разметка категорий")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -100,7 +100,7 @@ struct UncategorizedCategorizationView: View {
                     .font(.subheadline.weight(.medium))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(AppSurfaceStyle(material: .ultraThinMaterial), in: Capsule())
                     .padding(.bottom, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .onAppear {
@@ -114,7 +114,7 @@ struct UncategorizedCategorizationView: View {
     }
 
     private var listContent: some View {
-        List {
+        List { Group {
             if totalCount > 0 {
                 Section {
                     Text("Осталось разметить: \(totalCount)")
@@ -148,7 +148,7 @@ struct UncategorizedCategorizationView: View {
                     .listRowBackground(Color.clear)
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .listStyle(.insetGrouped)
     }
 
@@ -340,7 +340,7 @@ private struct CategoryPickerSheet: View {
             } else {
                 formContent
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Категория")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -361,7 +361,7 @@ private struct CategoryPickerSheet: View {
 
     @ViewBuilder
     private var formContent: some View {
-        Form {
+        Form { Group {
             Section("Операция") {
                 Text(transaction.description.isEmpty ? "Без описания" : transaction.description)
                     .font(.subheadline)
@@ -400,7 +400,7 @@ private struct CategoryPickerSheet: View {
                     }
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
     }
 
     private func loadCategories() async {
@@ -454,7 +454,7 @@ private struct SimilarTransactionsSheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
-        List {
+        List { Group {
             Section {
                 Text("Применить эту категорию к похожим операциям?")
                     .font(.subheadline)
@@ -534,7 +534,7 @@ private struct SimilarTransactionsSheet: View {
                         .font(.subheadline)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Похожие операции")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -708,7 +708,7 @@ private struct CustomSubstringPickerSheet: View {
     }
 
     var body: some View {
-        List {
+        List { Group {
             Section {
                 Text("Проведите по тексту, чтобы выделить фрагмент")
                     .font(.subheadline)
@@ -727,7 +727,7 @@ private struct CustomSubstringPickerSheet: View {
                         .font(.body.weight(.medium))
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .listStyle(.insetGrouped)
         .navigationTitle("Свой фрагмент")
         .navigationBarTitleDisplayMode(.inline)

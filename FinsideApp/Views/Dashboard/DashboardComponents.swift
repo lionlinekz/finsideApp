@@ -185,8 +185,11 @@ struct LiquidGlassCardModifier: ViewModifier {
         content
             .background {
                 ZStack {
+                    // В тёмной теме — тёмно-синяя плашка вместо серого стекла.
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(.ultraThinMaterial)
+                        .fill(colorScheme == .dark
+                              ? AnyShapeStyle(Color(uiColor: AppBackground.darkRaised))
+                              : AnyShapeStyle(.ultraThinMaterial))
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(
                             LinearGradient(
@@ -235,7 +238,9 @@ struct LiquidGlassChipModifier: ViewModifier {
                 if isSelected {
                     Capsule(style: .continuous).fill(tint)
                 } else {
-                    Capsule(style: .continuous).fill(.ultraThinMaterial)
+                    Capsule(style: .continuous).fill(colorScheme == .dark
+                        ? AnyShapeStyle(Color(uiColor: AppBackground.darkRaised))
+                        : AnyShapeStyle(.ultraThinMaterial))
                 }
             }
             .overlay {
@@ -261,7 +266,9 @@ struct LiquidGlassBarModifier: ViewModifier {
         content
             .background {
                 Rectangle()
-                    .fill(.ultraThinMaterial)
+                    .fill(colorScheme == .dark
+                          ? AnyShapeStyle(Color(uiColor: AppBackground.darkChrome).opacity(0.92))
+                          : AnyShapeStyle(.ultraThinMaterial))
                     .overlay(alignment: .top) {
                         Rectangle()
                             .fill(

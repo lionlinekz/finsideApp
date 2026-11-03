@@ -70,7 +70,7 @@ struct OnboardingTasksView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+        .background(Color.appPlainBackground)
         .sheet(item: $activeTask) { task in
             switch task.kind {
             case .acknowledgment:
@@ -161,7 +161,7 @@ private struct TaskRow: View {
                     .foregroundStyle(isDone ? Color.accentColor : Color(.tertiaryLabel))
             }
             .padding(14)
-            .background(.regularMaterial, in: .rect(cornerRadius: 16))
+            .background(.appSurface, in: .rect(cornerRadius: 16))
             .overlay {
                 RoundedRectangle(cornerRadius: 16)
                     .strokeBorder(isDone ? Color.accentColor.opacity(0.25) : .clear, lineWidth: 1)
@@ -230,9 +230,9 @@ private struct OnboardingTaskModal: View {
             .controlSize(.large)
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
-        }
+        }.appScreenBackground()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+        .background(Color.appPlainBackground)
         .presentationDetents([.medium])
     }
 }

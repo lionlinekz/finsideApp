@@ -92,7 +92,7 @@ struct CompanyOnboardingFormView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") { dismiss() }
@@ -284,7 +284,7 @@ struct CompanyOnboardingFormView: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 54)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.appSurface, in: .rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
         .onChange(of: companyType) { _, newValue in
@@ -310,7 +310,7 @@ struct CompanyOnboardingFormView: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 54)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.appSurface, in: .rect(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
@@ -394,7 +394,7 @@ private struct CompanyField: View {
             .onSubmit(onSubmit)
             .padding(.horizontal, 16)
             .frame(height: 54)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.appSurface, in: .rect(cornerRadius: 12))
             .contentShape(.rect(cornerRadius: 12))
             .onTapGesture { focus.wrappedValue = field }
     }

@@ -82,6 +82,7 @@ struct ChatDetailView: View {
         #if os(iOS) || os(visionOS)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .hidesAppTabBar()
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -160,7 +161,7 @@ struct ChatDetailView: View {
             .padding(.vertical, 5)
             .background {
                 Capsule(style: .continuous)
-                    .fill(.thinMaterial)
+                    .fill(.appThinSurface)
             }
             .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
@@ -207,7 +208,7 @@ struct ChatDetailView: View {
                 .padding(.vertical, 9)
                 .background {
                     Capsule(style: .continuous)
-                        .fill(.thinMaterial)
+                        .fill(.appThinSurface)
                 }
                 .overlay {
                     Capsule(style: .continuous)
@@ -514,7 +515,7 @@ extension UIImage {
 private enum ChatScenePalette {
     static var canvas: Color {
         #if os(iOS)
-        Color(uiColor: .systemGroupedBackground)
+        Color.appBackground
         #elseif os(macOS)
         Color(nsColor: .underPageBackgroundColor)
         #else

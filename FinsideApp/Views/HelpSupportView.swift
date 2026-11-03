@@ -14,7 +14,7 @@ struct HelpSupportView: View {
     }
 
     var body: some View {
-        List {
+        List { Group {
             Section {
                 Label {
                     Text("По вопросам обучения и работы сервиса пишите в каналы поддержки в приложении или на почту вашего менеджера.")
@@ -38,7 +38,7 @@ struct HelpSupportView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Помощь и поддержка")
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(isPresented: $showAgreementSheet) {
@@ -69,7 +69,7 @@ struct HelpSupportView: View {
             if isDeleting {
                 ProgressView("Удаление…")
                     .padding(24)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .background(AppSurfaceStyle(material: .ultraThinMaterial), in: RoundedRectangle(cornerRadius: 16))
             }
         }
         .alert(item: $banner) { item in
@@ -171,7 +171,7 @@ private struct VoluntaryDataDeletionAgreementView: View {
                             text: "У меня нет дополнительных требований по сохранению данных."
                         )
                     }
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.appSurface, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .strokeBorder(Color(.separator), lineWidth: 0.5)
@@ -262,7 +262,7 @@ private struct VoluntaryDataDeletionAgreementView: View {
                     .disabled(!canDelete)
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private func prerequisiteToggle(isOn: Binding<Bool>, text: String) -> some View {

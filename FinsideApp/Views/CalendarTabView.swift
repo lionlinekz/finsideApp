@@ -138,7 +138,7 @@ struct CalendarTabView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                Color.appPlainBackground.ignoresSafeArea()
                 CalendarLiquidBackdrop().ignoresSafeArea()
 
                 ScrollView {
@@ -185,7 +185,9 @@ struct CalendarTabView: View {
                         }
                         AvatarMenuButton()
                     }
+                    .appToolbarPill(compact: true)
                 }
+                .appHideSharedBackground()
             }
             .sheet(isPresented: $showAddNote) {
                 AddNoteSheet(initialDueDate: selectedDate) { title, deadline, priority in
@@ -344,7 +346,7 @@ struct CalendarTabView: View {
             .frame(width: cellWidth, height: 78)
             .background {
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Color.accentColor : Color(.secondarySystemGroupedBackground))
+                    .fill(isSelected ? Color.accentColor : Color.appSurface)
             }
             .overlay {
                 RoundedRectangle(cornerRadius: 12)

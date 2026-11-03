@@ -32,7 +32,7 @@ struct NewChatContactsView: View {
                 .onChange(of: query) { _, _ in
                     Task { await load() }
                 }
-        }
+        }.appScreenBackground()
     }
 
     @ViewBuilder
@@ -42,7 +42,7 @@ struct NewChatContactsView: View {
         } else if team.isEmpty && others.isEmpty {
             emptyState
         } else {
-            List {
+            List { Group {
                 if !team.isEmpty {
                     Section("Моя команда") {
                         ForEach(team) { contact in
@@ -64,7 +64,7 @@ struct NewChatContactsView: View {
                             .foregroundStyle(.red)
                     }
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .listStyle(.insetGrouped)
         }
     }

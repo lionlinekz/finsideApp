@@ -57,7 +57,7 @@ struct LockScreenView: View {
             .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+        .background(Color.appPlainBackground)
         .ignoresSafeArea(edges: .bottom)
         .onAppear {
             if BiometricService.isAvailable {

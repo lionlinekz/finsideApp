@@ -53,7 +53,7 @@ struct PinSetupView: View {
             .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.background)
+        .background(Color.appPlainBackground)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -126,7 +126,7 @@ struct PinPadView: View {
                                     .font(.title)
                                     .fontWeight(.medium)
                                     .frame(width: 72, height: 72)
-                                    .background(.regularMaterial, in: .circle)
+                                    .background(.appSurface, in: .circle)
                             }
                             .foregroundStyle(.primary)
                         }

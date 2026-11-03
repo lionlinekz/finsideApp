@@ -63,7 +63,7 @@ struct PlannedPaymentDetailView: View {
                 }
                 .padding(20)
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
             .navigationTitle(current.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -71,7 +71,7 @@ struct PlannedPaymentDetailView: View {
                     Button("Закрыть") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
             case .editAmount:
@@ -316,7 +316,7 @@ private struct AmountEditSheet: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
                     .frame(height: 56)
-                    .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                    .background(.appSurface, in: .rect(cornerRadius: 12))
 
                 if event.isRecurring {
                     ScopePicker(scope: $scope)
@@ -352,7 +352,7 @@ private struct AmountEditSheet: View {
                     Button("Отмена") { dismiss() }.disabled(isSaving)
                 }
             }
-        }
+        }.appScreenBackground()
         .presentationDetents([.medium])
         .interactiveDismissDisabled(isSaving)
     }
@@ -443,7 +443,7 @@ private struct DateEditSheet: View {
                     Button("Отмена") { dismiss() }.disabled(isSaving)
                 }
             }
-        }
+        }.appScreenBackground()
         .presentationDetents([.large])
         .interactiveDismissDisabled(isSaving)
     }
@@ -503,14 +503,14 @@ private struct MatchCandidatesSheet: View {
                 } else if candidates.isEmpty {
                     emptyState
                 } else {
-                    List(candidates) { candidate in
+                    List(candidates) { candidate in Group {
                         Button {
                             confirm(candidate)
                         } label: {
                             candidateRow(candidate)
                         }
                         .disabled(confirmingId != nil)
-                    }
+                    }.appListRowBackground() }.appListBackground()
                     .listStyle(.plain)
                 }
             }
@@ -528,11 +528,11 @@ private struct MatchCandidatesSheet: View {
                         .font(.footnote)
                         .foregroundStyle(.red)
                         .padding()
-                        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                        .background(.appSurface, in: .rect(cornerRadius: 12))
                         .padding()
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private var emptyState: some View {

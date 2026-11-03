@@ -42,7 +42,7 @@ struct LedgerListView: View {
                     description: Text(errorMessage)
                 )
             } else {
-                List {
+                List { Group {
                     ForEach(Array(lines.enumerated()), id: \.element.id) { index, line in
                         ledgerRow(line)
                             .onAppear {
@@ -50,10 +50,10 @@ struct LedgerListView: View {
                                 Task { await loadMoreIfNeeded() }
                             }
                     }
-                }
+                }.appListRowBackground() }.appListBackground()
                 .listStyle(.plain)
             }
-        }
+        }.appScreenBackground()
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await reload() }

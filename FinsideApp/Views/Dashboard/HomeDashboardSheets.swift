@@ -24,7 +24,7 @@ struct HeroRingsLegendSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     legendRow(
                         color: DashboardRingPalette.revenue,
@@ -65,7 +65,7 @@ struct HeroRingsLegendSheet: View {
                 } footer: {
                     Text(ringsFooterText)
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Показатели")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -73,7 +73,7 @@ struct HeroRingsLegendSheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private func legendRow(color: Color, title: String, value: String, subtitle: String) -> some View {
@@ -117,7 +117,7 @@ struct CashBalanceHintSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
                         bulletRow(
@@ -156,7 +156,7 @@ struct CashBalanceHintSheet: View {
                         "Цифры по плановым платежам берутся из раздела планирования (статус «ожидает оплаты», срок до конца текущего месяца + просрочённые). По чату учитываются только сообщения со статусом «согласовано», по которым ещё не создана операция. Это ориентир, а не банковский остаток."
                     )
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Денежный остаток")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -164,7 +164,7 @@ struct CashBalanceHintSheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private func bulletRow(_ text: String) -> some View {
@@ -225,7 +225,7 @@ struct CashBalanceEntrySheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            Form { Group {
                 Section {
                     LabeledContent("Касса", value: register.label)
                     if let company = register.companyName, !company.isEmpty {
@@ -275,7 +275,7 @@ struct CashBalanceEntrySheet: View {
                             .font(.subheadline)
                     }
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle(register.hasBalance ? "Обновить остаток" : "Внести остаток")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -296,7 +296,7 @@ struct CashBalanceEntrySheet: View {
                 }
             }
             .interactiveDismissDisabled(isSaving)
-        }
+        }.appScreenBackground()
     }
 
     @MainActor
@@ -339,7 +339,7 @@ struct MetricComparisonSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     LabeledContent("Сейчас", value: DashboardMoney.formatTenge(current))
                     LabeledContent("Прошлый период", value: DashboardMoney.formatTenge(previous))
@@ -357,7 +357,7 @@ struct MetricComparisonSheet: View {
                 } footer: {
                     Text("Сравнение с предыдущим интервалом той же длины (как на главной).")
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -365,7 +365,7 @@ struct MetricComparisonSheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
         .tint(tint)
     }
 }
@@ -381,7 +381,7 @@ struct TaxEstimateSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     if let title = summary.taxRegimeTitleRu, !title.isEmpty {
                         LabeledContent("Режим", value: title)
@@ -414,7 +414,7 @@ struct TaxEstimateSheet: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Налог (оценка)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -422,7 +422,7 @@ struct TaxEstimateSheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 }
 
@@ -432,13 +432,13 @@ struct ChartDaySheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     LabeledContent("Дата", value: DashboardMoney.longDateLabel(point.date))
                     LabeledContent("Доход", value: DashboardMoney.formatTenge(point.income))
                     LabeledContent("Расход", value: DashboardMoney.formatTenge(point.expense))
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("День")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -446,7 +446,7 @@ struct ChartDaySheet: View {
                     Button("Готово") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 }
 
@@ -462,7 +462,7 @@ struct HomeApprovalsSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     LabeledContent("Запросов", value: "\(stats.total)")
                     LabeledContent("Согласовано", value: "\(stats.approved)")
@@ -503,7 +503,7 @@ struct HomeApprovalsSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Согласования")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -518,7 +518,7 @@ struct HomeApprovalsSheet: View {
                     }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private func approvalRow(_ item: DashboardApprovalItem) -> some View {

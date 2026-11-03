@@ -35,7 +35,7 @@ struct CategoryAutomationRulesView: View {
             } else {
                 rulesList
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Правила категорий")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
@@ -70,7 +70,7 @@ struct CategoryAutomationRulesView: View {
     }
 
     private var rulesList: some View {
-        List {
+        List { Group {
             ForEach(rules) { rule in
                 Button {
                     editingRule = EditableAutomationRule(rule: rule)
@@ -86,7 +86,7 @@ struct CategoryAutomationRulesView: View {
                     }
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .listStyle(.insetGrouped)
     }
 
@@ -188,7 +188,7 @@ private struct EditAutomationRuleSheet: View {
     }
 
     var body: some View {
-        Form {
+        Form { Group {
             Section("Правило") {
                 Text(rule.kindTitle)
                 Text(rule.directionTitle)
@@ -235,7 +235,7 @@ private struct EditAutomationRuleSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Правило")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

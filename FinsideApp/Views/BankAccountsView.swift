@@ -33,7 +33,7 @@ struct BankAccountsView: View {
             } else {
                 accountsList
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Банковские счета")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -74,7 +74,7 @@ struct BankAccountsView: View {
     // MARK: - List
 
     private var accountsList: some View {
-        List {
+        List { Group {
             ForEach(accounts) { acc in
                 accountRow(acc)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -85,7 +85,7 @@ struct BankAccountsView: View {
                         }
                     }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .listStyle(.insetGrouped)
     }
 
@@ -208,7 +208,7 @@ struct AddBankAccountSheet: View {
     }
 
     var body: some View {
-        Form {
+        Form { Group {
             if isLoadingBanks {
                 Section {
                     ProgressView("Загрузка банков…")
@@ -263,7 +263,7 @@ struct AddBankAccountSheet: View {
                     }
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Новый счёт")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

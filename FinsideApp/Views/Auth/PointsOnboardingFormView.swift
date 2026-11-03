@@ -56,7 +56,7 @@ struct PointsOnboardingFormView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.horizontal, 24)
-            .background(.background)
+            .background(Color.appPlainBackground)
             .animation(.easeInOut(duration: 0.2), value: stage)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -163,7 +163,7 @@ struct PointsOnboardingFormView: View {
                 .onSubmit(addPoint)
                 .padding(.horizontal, 16)
                 .frame(height: 54)
-                .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                .background(.appSurface, in: .rect(cornerRadius: 12))
                 .padding(.top, 28)
 
             if let errorMessage {
@@ -201,7 +201,7 @@ struct PointsOnboardingFormView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+        .background(.appSurface, in: .rect(cornerRadius: 12))
     }
 
     // MARK: - Действия

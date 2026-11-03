@@ -229,7 +229,7 @@ private struct StatementImportGuideView: View {
                     Button("Закрыть") { dismiss() }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 }
 
@@ -247,7 +247,7 @@ private struct BankGuideRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14))
+        .background(.appSurface, in: .rect(cornerRadius: 14))
     }
 }
 

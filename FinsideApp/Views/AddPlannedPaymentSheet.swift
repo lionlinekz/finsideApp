@@ -88,7 +88,7 @@ struct AddPlannedPaymentSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            Form { Group {
                 Section("Сумма и дата") {
                     HStack {
                         Text("Сумма")
@@ -140,7 +140,7 @@ struct AddPlannedPaymentSheet: View {
                             .foregroundStyle(.red)
                     }
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Плановый платёж")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -160,7 +160,7 @@ struct AddPlannedPaymentSheet: View {
                     .disabled(!canSubmit)
                 }
             }
-        }
+        }.appScreenBackground()
         .interactiveDismissDisabled(isSaving)
         .task { await loadCategories() }
         .onChange(of: date) { _, newDate in

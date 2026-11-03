@@ -27,7 +27,7 @@ struct PaywallView: View {
                     content
                 }
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
             .task { await load() }
         }
     }
@@ -344,7 +344,7 @@ private struct PlanCard: View {
                 }
             }
             .padding(16)
-            .background(.regularMaterial, in: .rect(cornerRadius: 14))
+            .background(.appSurface, in: .rect(cornerRadius: 14))
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
                     .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2)

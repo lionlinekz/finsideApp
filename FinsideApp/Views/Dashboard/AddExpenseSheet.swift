@@ -95,7 +95,7 @@ struct AddExpenseSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Form {
+                Form { Group {
                     Section {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Сумма")
@@ -185,7 +185,7 @@ struct AddExpenseSheet: View {
                                 .font(.footnote)
                         }
                     }
-                }
+                }.appListRowBackground() }.appListBackground()
                 .formStyle(.grouped)
                 .disabled(showSuccess)
 
@@ -214,7 +214,7 @@ struct AddExpenseSheet: View {
                 }
             }
             .task { await loadCategories() }
-        }
+        }.appScreenBackground()
     }
 
     private var successOverlay: some View {
@@ -233,7 +233,7 @@ struct AddExpenseSheet: View {
                     .foregroundStyle(.secondary)
             }
             .padding(28)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(.appSurface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .padding(32)
         }
         .transition(.opacity.combined(with: .scale(scale: 0.92)))

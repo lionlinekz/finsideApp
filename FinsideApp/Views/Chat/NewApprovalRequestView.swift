@@ -34,7 +34,7 @@ struct NewApprovalRequestView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            Form { Group {
                 Section {
                     TextField("Например, «Оплата хостинга»", text: $subject, axis: .vertical)
                         .lineLimit(1...3)
@@ -85,7 +85,7 @@ struct NewApprovalRequestView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .formStyle(.grouped)
             .navigationTitle("Запрос на согласование")
             #if os(iOS) || os(visionOS)
@@ -106,7 +106,7 @@ struct NewApprovalRequestView: View {
                     }
                 }
             }
-        }
+        }.appScreenBackground()
     }
 
     private func submit() async {

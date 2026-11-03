@@ -22,7 +22,7 @@ struct AddNoteSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            Form { Group {
                 Section {
                     TextField("Название", text: $title)
                 }
@@ -43,7 +43,7 @@ struct AddNoteSheet: View {
                     Text("Приоритет")
                         .textCase(nil)
                 }
-            }
+            }.appListRowBackground() }.appListBackground()
             .navigationTitle("Новая заметка")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -62,6 +62,6 @@ struct AddNoteSheet: View {
                     .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
-        }
+        }.appScreenBackground()
     }
 }

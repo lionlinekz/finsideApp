@@ -50,6 +50,7 @@ struct ChatListView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 20)
             }
+            .appScreenBackground()
             .refreshable {
                 await chatService.loadConversations()
                 await chatService.loadPendingApprovals()
@@ -61,8 +62,9 @@ struct ChatListView: View {
                     composeMenu
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AvatarMenuButton()
+                    AvatarMenuButton().appToolbarPill(circle: true)
                 }
+                .appHideSharedBackground()
                 #else
                 ToolbarItem(placement: .automatic) {
                     composeMenu

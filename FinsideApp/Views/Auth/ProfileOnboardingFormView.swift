@@ -71,7 +71,7 @@ struct ProfileOnboardingFormView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Отмена") { dismiss() }
@@ -255,7 +255,7 @@ private struct ProfileField: View {
             .onSubmit(onSubmit)
             .padding(.horizontal, 16)
             .frame(height: 54)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.appSurface, in: .rect(cornerRadius: 12))
             .contentShape(.rect(cornerRadius: 12))
             .onTapGesture { focus.wrappedValue = field }
     }

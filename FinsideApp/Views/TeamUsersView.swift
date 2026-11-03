@@ -27,7 +27,7 @@ struct TeamUsersView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Пользователи")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -89,11 +89,11 @@ struct TeamUsersView: View {
                     .padding()
                     Spacer()
                 } else {
-                    List {
+                    List { Group {
                         ForEach(company.positions) { pos in
                             employeeRow(pos)
                         }
-                    }
+                    }.appListRowBackground() }.appListBackground()
                     .listStyle(.insetGrouped)
                 }
             }
@@ -221,7 +221,7 @@ struct TeamAddEmployeeSheet: View {
     @State private var showSuccess = false
 
     var body: some View {
-        Form {
+        Form { Group {
             Section {
                 Picker("Тип", selection: $mode) {
                     ForEach(TeamAddMode.allCases) { m in
@@ -265,7 +265,7 @@ struct TeamAddEmployeeSheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Добавить сотрудника")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

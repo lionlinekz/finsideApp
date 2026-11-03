@@ -247,12 +247,18 @@ struct HomeView: View {
                             .overlay {
                                 PeriodSwipeGlow(progress: periodSwipeSheenPhase)
                             }
+                            // Блик рисуется только поверх карточек (sourceAtop внутри группы),
+                            // а не одним прямоугольником на весь блок.
+                            .compositingGroup()
                     } else if !canViewFinancialData {
                         initiatorHomeContent(approvalStats)
                             .offset(x: periodSwipeNudgeX)
                             .overlay {
                                 PeriodSwipeGlow(progress: periodSwipeSheenPhase)
                             }
+                            // Блик рисуется только поверх карточек (sourceAtop внутри группы),
+                            // а не одним прямоугольником на весь блок.
+                            .compositingGroup()
                     } else {
                         emptyView
                     }
@@ -264,10 +270,16 @@ struct HomeView: View {
             // Один жест на ScrollView: два simultaneousGesture (здесь и на внутреннем контенте)
             // давали двойной onEnded → перескок на 2 месяца/дня за один свайп.
             .simultaneousGesture(periodSwipeGesture)
-            .background(Color(.systemGroupedBackground))
+            .background(Color.appBackground)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { periodMenu }
-                ToolbarItem(placement: .topBarTrailing) { AvatarMenuButton() }
+                ToolbarItem(placement: .topBarLeading) {
+                    // Тулбар не пересчитывает ширину, когда меняется текст кнопки
+                    // (слово обрезалось до следующей перерисовки) — `.id` пересоздаёт
+                    // кнопку под новую подпись.
+                    periodMenu.appToolbarPill().id(periodLabel)
+                }
+                .appHideSharedBackground()
+                ToolbarItem(placement: .topBarTrailing) { AvatarMenuButton().appToolbarPill(circle: true) }.appHideSharedBackground()
             }
             .refreshable { await loadDataAsync() }
             .onReceive(NotificationCenter.default.publisher(for: .finsideLedgerDidChange)) { _ in
@@ -572,7 +584,7 @@ struct HomeView: View {
         return VStack(spacing: 16) {
             // Rings + блок с кольцами
             ZStack {
-                Color(.secondarySystemGroupedBackground)
+                Color.appSurface
 
                 HStack(spacing: 20) {
                     Button {
@@ -940,7 +952,7 @@ struct HomeView: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color(.tertiarySystemGroupedBackground))
+                    .fill(Color.appTertiary)
                     .frame(width: 34, height: 34)
                 Text("\(idx + 1)")
                     .font(.caption.weight(.bold).monospacedDigit())
@@ -1642,9 +1654,10 @@ struct HomeView: View {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: "calendar").font(.subheadline)
-                Text(periodLabel).font(.subheadline.weight(.semibold))
+                Text(periodLabel).font(.subheadline.weight(.semibold)).lineLimit(1)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
             }
+            .fixedSize()
         }
     }
 
@@ -1687,7 +1700,7 @@ struct HomeView: View {
                         Button("Отмена") { showDatePicker = false }
                     }
                 }
-        }
+        }.appScreenBackground()
         .presentationDetents([.medium])
     }
 
@@ -1744,7 +1757,7 @@ struct HomeView: View {
                     Button("Отмена") { showMonthPicker = false }
                 }
             }
-        }
+        }.appScreenBackground()
         .presentationDetents([.medium, .large])
     }
 
@@ -1769,14 +1782,14 @@ struct HomeView: View {
     private var loadingPlaceholder: some View {
         VStack(spacing: 16) {
             if canViewFinancialData {
-                RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)).frame(height: 150)
+                RoundedRectangle(cornerRadius: 16).fill(Color.appSurface).frame(height: 150)
                 HStack(spacing: 10) {
                     ForEach(0..<3) { _ in
-                        RoundedRectangle(cornerRadius: 12).fill(Color(.secondarySystemGroupedBackground)).frame(height: 64)
+                        RoundedRectangle(cornerRadius: 12).fill(Color.appSurface).frame(height: 64)
                     }
                 }
             }
-            RoundedRectangle(cornerRadius: 16).fill(Color(.secondarySystemGroupedBackground)).frame(height: 100)
+            RoundedRectangle(cornerRadius: 16).fill(Color.appSurface).frame(height: 100)
         }
         .padding(16)
         .redacted(reason: .placeholder)
@@ -1946,8 +1959,8 @@ private struct MetricRow: View {
 
     private var cardFill: Color {
         usesDarkMetricCard
-            ? Color(red: 0.14, green: 0.14, blue: 0.16)
-            : Color(.secondarySystemGroupedBackground)
+            ? Color(uiColor: AppBackground.darkRaised)
+            : Color.appSurface
     }
 
     private var labelColor: Color {
@@ -2211,8 +2224,9 @@ private struct PeriodSwipeGlow: View {
                 endPoint: .trailing
             )
             .frame(width: w, height: h)
-            .blendMode(.plusLighter)
             .opacity(strength * 0.36)
+            // Только там, где под бликом есть карточка: форма и скругления — её.
+            .blendMode(.sourceAtop)
         }
         .allowsHitTesting(false)
     }
@@ -2227,7 +2241,7 @@ private struct FitnessCard<Content: View>: View {
         VStack(alignment: .leading, spacing: 0) { content }
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
+            .background(Color.appSurface, in: .rect(cornerRadius: 16))
     }
 }
 
@@ -2248,8 +2262,14 @@ private struct ShimmerModifier: ViewModifier {
                 startPoint: .init(x: phase - 0.5, y: 0.5),
                 endPoint: .init(x: phase + 0.5, y: 0.5)
             )
+            .allowsHitTesting(false)
             .blendMode(.sourceAtop)
-        ).onAppear {
+        )
+        // Без отдельного слоя sourceAtop «видит» фон экрана как содержимое,
+        // и перелив шёл одним прямоугольником с острыми углами. С ним — только
+        // по самим плашкам скелетона.
+        .compositingGroup()
+        .onAppear {
             withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) { phase = 1.5 }
         }
     }

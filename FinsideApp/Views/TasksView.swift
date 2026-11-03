@@ -10,7 +10,7 @@ struct TasksView: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            List { Group {
                 Section {
                     ForEach(active) { row in
                         taskRow(row)
@@ -75,14 +75,15 @@ struct TasksView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 10, trailing: 0))
-            }
+            }.appListRowBackground() }.appListBackground()
             .listStyle(.insetGrouped)
             .navigationTitle("Заметки")
             .toolbar {
                 #if os(iOS) || os(visionOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    AvatarMenuButton()
+                    AvatarMenuButton().appToolbarPill(circle: true)
                 }
+                .appHideSharedBackground()
                 #else
                 ToolbarItem(placement: .automatic) {
                     AvatarMenuButton()
@@ -216,7 +217,7 @@ private struct TasksHistoryView: View {
                     ContentUnavailableView.search(text: trimmedQuery)
                 }
             } else {
-                List {
+                List { Group {
                     ForEach(monthSections, id: \.title) { section in
                         Section {
                             ForEach(section.tasks) { t in
@@ -229,10 +230,10 @@ private struct TasksHistoryView: View {
                                 .textCase(nil)
                         }
                     }
-                }
+                }.appListRowBackground() }.appListBackground()
                 .listStyle(.insetGrouped)
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("История")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Поиск")

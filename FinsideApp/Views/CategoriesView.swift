@@ -35,7 +35,7 @@ struct CategoriesView: View {
             } else {
                 categoriesList
             }
-        }
+        }.appScreenBackground()
         .navigationTitle("Категории")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -95,7 +95,7 @@ struct CategoriesView: View {
     }
 
     private var categoriesList: some View {
-        List {
+        List { Group {
             ForEach(filteredCategories) { category in
                 Section {
                     if category.subcategories.isEmpty {
@@ -120,7 +120,7 @@ struct CategoriesView: View {
                         .textCase(nil)
                 }
             }
-        }
+        }.appListRowBackground() }.appListBackground()
         .listStyle(.insetGrouped)
     }
 
@@ -193,7 +193,7 @@ private struct AddCategorySheet: View {
     }
 
     var body: some View {
-        Form {
+        Form { Group {
             Section("Категория") {
                 TextField("Наименование", text: $name)
                     .textInputAutocapitalization(.sentences)
@@ -211,7 +211,7 @@ private struct AddCategorySheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Новая категория")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -265,7 +265,7 @@ private struct AddSubcategorySheet: View {
     @State private var formError: String?
 
     var body: some View {
-        Form {
+        Form { Group {
             Section("Категория") {
                 Text(category.name)
                     .foregroundStyle(.secondary)
@@ -282,7 +282,7 @@ private struct AddSubcategorySheet: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
         .navigationTitle("Новая подкатегория")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -43,7 +43,7 @@ struct SignUpView: View {
                 }
                 .scrollDismissesKeyboard(.interactively)
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
         }
     }
 
@@ -276,7 +276,7 @@ private struct AuthField: View {
             }
             .padding(.horizontal, 16)
             .frame(height: 54)
-            .background(.regularMaterial, in: .rect(cornerRadius: 12))
+            .background(.appSurface, in: .rect(cornerRadius: 12))
             .overlay {
                 RoundedRectangle(cornerRadius: 12)
                     .strokeBorder(error != nil ? .red : .clear, lineWidth: 1.5)

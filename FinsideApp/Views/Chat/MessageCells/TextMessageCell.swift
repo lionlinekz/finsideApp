@@ -91,7 +91,7 @@ struct TextMessageCell: View {
             .padding(.vertical, 8)
             .background {
                 Capsule(style: .continuous)
-                    .fill(.thinMaterial)
+                    .fill(.appThinSurface)
             }
             .overlay {
                 Capsule(style: .continuous)

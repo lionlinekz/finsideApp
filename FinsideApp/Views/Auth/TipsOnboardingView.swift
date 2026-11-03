@@ -43,7 +43,7 @@ struct TipsOnboardingView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
-            .background(.background)
+            .background(Color.appPlainBackground)
             .safeAreaInset(edge: .bottom) {
                 Button(action: onDone) {
                     Text("Хорошо")
@@ -95,7 +95,7 @@ private struct TipRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
-        .background(.regularMaterial, in: .rect(cornerRadius: 14))
+        .background(.appSurface, in: .rect(cornerRadius: 14))
     }
 }
 

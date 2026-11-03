@@ -84,7 +84,7 @@ struct ApprovalActionSheet: View {
             .task(id: context.id) {
                 await loadMessage()
             }
-        }
+        }.appScreenBackground()
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }

@@ -26,12 +26,12 @@ struct LoginView: View {
                         .textInputAutocapitalization(.never)
                         #endif
                         .padding()
-                        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                        .background(.appSurface, in: .rect(cornerRadius: 12))
 
                     SecureField("Пароль", text: $password)
                         .textContentType(.password)
                         .padding()
-                        .background(.regularMaterial, in: .rect(cornerRadius: 12))
+                        .background(.appSurface, in: .rect(cornerRadius: 12))
                 }
                 .padding(.horizontal, 24)
 
@@ -77,7 +77,7 @@ struct LoginView: View {
                 Spacer()
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.background)
+            .background(Color.appPlainBackground)
             .ignoresSafeArea(edges: .bottom)
         }
     }
