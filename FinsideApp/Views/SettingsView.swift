@@ -73,17 +73,11 @@ struct SettingsView: View {
                     Label("О приложении", systemImage: "info.circle")
                 }
 
-                Section("Аккаунт") {
-                    Button(role: .destructive) {
-                        appState.logout()
-                    } label: {
-                        Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
-                    }
+                Section {
                     NavigationLink {
-                        DeleteAccountView()
+                        AccountSettingsView()
                     } label: {
-                        Label("Удалить аккаунт", systemImage: "person.crop.circle.badge.xmark")
-                            .foregroundStyle(.red)
+                        Label("Аккаунт", systemImage: "person.crop.circle")
                     }
                 }
             }.appListRowBackground() }.appListBackground()

@@ -69,12 +69,6 @@ struct MainTabView: View {
                 .appTabContent()
                 .tag(AppTab.settings)
         }
-        // Место под бар, чтобы низ списков не прятался под ним.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if !tabBarVisibility.isHidden {
-                Color.clear.frame(height: AppTabBar.height)
-            }
-        }
         .overlay(alignment: .bottom) {
             if !tabBarVisibility.isHidden {
                 AppTabBar(
@@ -426,13 +420,28 @@ private struct HidesAppTabBarModifier: ViewModifier {
     }
 }
 
+private struct AppTabBarInsetModifier: ViewModifier {
+    private var visibility = AppTabBarVisibility.shared
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if !visibility.isHidden {
+                Color.clear.frame(height: AppTabBar.height)
+            }
+        }
+    }
+}
+
 extension View {
     /// Спрятать свой таб-бар, пока этот экран открыт.
     func hidesAppTabBar() -> some View { modifier(HidesAppTabBarModifier()) }
 
-    /// Содержимое вкладки: прячем системный таб-бар (рисуем свой).
+    /// Содержимое вкладки: прячем системный таб-бар (рисуем свой) и оставляем
+    /// под ним место, чтобы низ списков не уходил под бар и нажимался.
+    /// Отступ ставится на каждую вкладку: с самого `TabView` он до страниц не доходит.
     fileprivate func appTabContent() -> some View {
         toolbar(.hidden, for: .tabBar)
+            .modifier(AppTabBarInsetModifier())
     }
 }
 

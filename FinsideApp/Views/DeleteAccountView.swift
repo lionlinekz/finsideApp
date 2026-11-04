@@ -1,6 +1,45 @@
 import SwiftUI
 import StoreKit
 
+/// Настройки → Аккаунт: кто вошёл, выход и удаление аккаунта.
+struct AccountSettingsView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        List { Group {
+            if let user = appState.user {
+                Section {
+                    let name = "\(user.firstName) \(user.lastName)"
+                        .trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty {
+                        LabeledContent("Имя", value: name)
+                    }
+                    LabeledContent("Email", value: user.email)
+                }
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    appState.logout()
+                } label: {
+                    Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            }
+
+            Section {
+                NavigationLink {
+                    DeleteAccountView()
+                } label: {
+                    Label("Удалить аккаунт", systemImage: "person.crop.circle.badge.xmark")
+                        .foregroundStyle(.red)
+                }
+            }
+        }.appListRowBackground() }.appScreenBackground().appListBackground()
+        .navigationTitle("Аккаунт")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Удаление аккаунта внутри приложения (App Store 5.1.1(v)).
 struct DeleteAccountView: View {
     @Environment(AppState.self) private var appState
