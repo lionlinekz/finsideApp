@@ -424,11 +424,14 @@ private struct AppTabBarInsetModifier: ViewModifier {
     private var visibility = AppTabBarVisibility.shared
 
     func body(content: Content) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: 0) {
-            if !visibility.isHidden {
-                Color.clear.frame(height: AppTabBar.height)
-            }
-        }
+        // `safeAreaInset` сюда не годится: до List внутри NavigationStack вкладки
+        // он не доходит. `contentMargins` идёт через окружение и достаётся
+        // всем прокручиваемым спискам вкладки, включая вложенные экраны.
+        content.contentMargins(
+            .bottom,
+            visibility.isHidden ? 0 : AppTabBar.height + 16,
+            for: .scrollContent
+        )
     }
 }
 
