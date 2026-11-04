@@ -1106,6 +1106,13 @@ final class APIService {
         return try JSONDecoder().decode(DeleteAllTransactionsResponse.self, from: data)
     }
 
+    // MARK: - Account
+
+    /// Безвозвратно удаляет аккаунт текущего пользователя на сервере (App Store 5.1.1(v)).
+    func deleteAccount() async throws {
+        _ = try await postAuthJSONChecked(path: "/auth/delete-account/", json: ["confirm": true])
+    }
+
     // MARK: - Networking
 
     private func post(path: String, body: [String: String]) async throws -> Data {

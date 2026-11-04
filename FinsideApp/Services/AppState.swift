@@ -370,6 +370,16 @@ final class AppState {
     func logout() {
         // Отписать устройство от push до того, как чистим JWT.
         Task { await PushRegistrationService.shared.unregisterCurrent() }
+        clearLocalSession()
+    }
+
+    /// Удаляет аккаунт на сервере и выходит. Push-токен сервер удаляет сам вместе с пользователем.
+    func deleteAccount() async throws {
+        try await APIService.shared.deleteAccount()
+        clearLocalSession()
+    }
+
+    private func clearLocalSession() {
         KeychainService.clearAll()
         user = nil
         pendingChatOpenConversationId = nil
