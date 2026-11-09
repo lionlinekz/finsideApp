@@ -212,11 +212,19 @@ struct PaywallView: View {
             }
             .font(.caption2)
 
-            Button("Выйти") {
-                appState.logout()
+            HStack(spacing: 20) {
+                Button("Выйти") {
+                    appState.logout()
+                }
+                .foregroundStyle(.secondary)
+
+                // Удаление доступно и без подписки (App Store 5.1.1(v)).
+                NavigationLink("Удалить аккаунт") {
+                    DeleteAccountView()
+                }
+                .foregroundStyle(.red)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
         }
         .padding(.top, 24)
         .padding(.bottom, 36)

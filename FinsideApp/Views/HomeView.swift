@@ -121,6 +121,8 @@ struct HomeView: View {
     @State private var periodSwipeSheenPhase: CGFloat = 0
     /// Смещение ленты дашборда за пальцем (pt), с упругим сбросом.
     @State private var periodSwipeNudgeX: CGFloat = 0
+    /// Куда листали период: перелив скелетона загрузки идёт в ту же сторону.
+    @State private var lastSwipeTowardLeading = false
     /// Раскрытый блок «Банковские счета» под «Денежный остаток» (тап по остатку).
     @State private var expandedBankAccountsUnderOstatok = false
     /// Раскрытые группы в блоке «Источники оплаты расходов».
@@ -412,6 +414,7 @@ struct HomeView: View {
                 }
                 guard abs(dx) > abs(dy) * 1.2, abs(dx) > 48 else { return }
                 DashboardHaptics.lightImpact()
+                lastSwipeTowardLeading = dx < 0
                 if dx < 0 {
                     shiftFocusedPeriod(step: 1)
                 } else {
@@ -1793,7 +1796,7 @@ struct HomeView: View {
         }
         .padding(16)
         .redacted(reason: .placeholder)
-        .shimmer()
+        .shimmer(towardLeading: lastSwipeTowardLeading)
     }
 
     private func errorView(_ msg: String) -> some View {
@@ -2248,6 +2251,8 @@ private struct FitnessCard<Content: View>: View {
 // MARK: - Shimmer
 
 private struct ShimmerModifier: ViewModifier {
+    /// `true` — перелив идёт справа налево (после свайпа влево).
+    var towardLeading = false
     @Environment(\.colorScheme) private var colorScheme
     @State private var phase: CGFloat = 0
 
@@ -2259,8 +2264,8 @@ private struct ShimmerModifier: ViewModifier {
                     Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.06),
                     .clear,
                 ],
-                startPoint: .init(x: phase - 0.5, y: 0.5),
-                endPoint: .init(x: phase + 0.5, y: 0.5)
+                startPoint: .init(x: towardLeading ? 1 - (phase - 0.5) : phase - 0.5, y: 0.5),
+                endPoint: .init(x: towardLeading ? 1 - (phase + 0.5) : phase + 0.5, y: 0.5)
             )
             .allowsHitTesting(false)
             .blendMode(.sourceAtop)
@@ -2276,7 +2281,9 @@ private struct ShimmerModifier: ViewModifier {
 }
 
 private extension View {
-    func shimmer() -> some View { modifier(ShimmerModifier()) }
+    func shimmer(towardLeading: Bool = false) -> some View {
+        modifier(ShimmerModifier(towardLeading: towardLeading))
+    }
 }
 
 #Preview {

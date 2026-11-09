@@ -6,6 +6,7 @@ import UIKit
 struct OnboardingTasksView: View {
     @Environment(AppState.self) private var appState
     @State private var activeTask: OnboardingTask?
+    @State private var showDeleteAccount = false
 
     private var completedIds: [String] {
         appState.user?.onboardingCompletedTasks ?? []
@@ -61,16 +62,34 @@ struct OnboardingTasksView: View {
 
                 Spacer(minLength: 24)
 
-                Button("Выйти") {
-                    appState.logout()
+                HStack(spacing: 20) {
+                    Button("Выйти") {
+                        appState.logout()
+                    }
+                    .foregroundStyle(.secondary)
+
+                    // Удаление доступно до завершения онбординга (App Store 5.1.1(v)).
+                    Button("Удалить аккаунт") {
+                        showDeleteAccount = true
+                    }
+                    .foregroundStyle(.red)
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
                 .padding(.bottom, 24)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.appPlainBackground)
+        .sheet(isPresented: $showDeleteAccount) {
+            NavigationStack {
+                DeleteAccountView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Отмена") { showDeleteAccount = false }
+                        }
+                    }
+            }
+        }
         .sheet(item: $activeTask) { task in
             switch task.kind {
             case .acknowledgment:
