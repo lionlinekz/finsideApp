@@ -70,7 +70,31 @@ struct AvatarMenuButton: View {
 // MARK: - Remote avatar (Bearer + те же cookie-политики, что у API — не только AsyncImage без заголовков)
 
 private enum AvatarImageLoader {
+    /// Аватарка показывается на многих экранах; без кэша каждый экран заново
+    /// качал её (и при 404 — дважды: с токеном и без).
+    private static let images = NSCache<NSURL, UIImage>()
+    /// Неудачные URL не запрашиваем повторно какое-то время.
+    private static let failures = NSCache<NSURL, NSDate>()
+    private static let failureTTL: TimeInterval = 5 * 60
+
     static func load(url: URL) async -> UIImage? {
+        let key = url as NSURL
+        if let cached = images.object(forKey: key) { return cached }
+        if let failedAt = failures.object(forKey: key),
+           Date().timeIntervalSince(failedAt as Date) < failureTTL {
+            return nil
+        }
+        let img = await fetchFromNetwork(url: url)
+        if let img {
+            images.setObject(img, forKey: key)
+            failures.removeObject(forKey: key)
+        } else {
+            failures.setObject(NSDate(), forKey: key)
+        }
+        return img
+    }
+
+    private static func fetchFromNetwork(url: URL) async -> UIImage? {
         func fetch(authorized: Bool) async -> UIImage? {
             var request = URLRequest(url: url)
             request.httpShouldHandleCookies = true

@@ -52,12 +52,30 @@ final class WebSocketClient {
         components.queryItems = [URLQueryItem(name: "token", value: token)]
         guard let url = components.url else { return }
 
-        let session = URLSession(configuration: .default)
-        webSocketTask = session.webSocketTask(with: url)
-        webSocketTask?.resume()
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        webSocketTask?.cancel(with: .normalClosure, reason: nil)
+
+        let task = URLSession.shared.webSocketTask(with: url)
+        webSocketTask = task
+        task.resume()
+        // Счётчик попыток сбрасываем только когда сокет реально открылся (пришёл pong
+        // или сообщение): resume() не значит, что рукопожатие прошло. Иначе при
+        // недоступном сервере бэкофф каждый раз начинается заново и клиент
+        // долбит /ws/chat/ каждые 2 секунды бесконечно.
+        task.sendPing { [weak self] error in
+            guard error == nil else { return }
+            Task { @MainActor in
+                guard let self, task === self.webSocketTask else { return }
+                self.markOpen()
+            }
+        }
+        receiveLoop(task)
+    }
+
+    private func markOpen() {
         isConnected = true
         reconnectAttempts = 0
-        receiveLoop()
     }
 
     func disconnect() {
@@ -93,16 +111,20 @@ final class WebSocketClient {
         webSocketTask?.send(.string(str)) { _ in }
     }
 
-    private func receiveLoop() {
-        webSocketTask?.receive { [weak self] result in
+    private func receiveLoop(_ task: URLSessionWebSocketTask) {
+        task.receive { [weak self] result in
             Task { @MainActor in
-                guard let self else { return }
+                // Колбэк от старого сокета (после disconnect()/переподключения) игнорируем,
+                // иначе каждый закрытый сокет запускал бы ещё одно переподключение.
+                guard let self, task === self.webSocketTask else { return }
                 switch result {
                 case .success(let message):
+                    self.markOpen()
                     self.handleMessage(message)
-                    self.receiveLoop()
+                    self.receiveLoop(task)
                 case .failure:
                     self.isConnected = false
+                    self.webSocketTask = nil
                     self.scheduleReconnect()
                 }
             }
@@ -154,6 +176,7 @@ final class WebSocketClient {
         guard reconnectAttempts < maxReconnectAttempts else { return }
         reconnectAttempts += 1
         let delay = min(pow(2.0, Double(reconnectAttempts)), 30.0)
+        reconnectTask?.cancel()
         reconnectTask = Task {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { return }
