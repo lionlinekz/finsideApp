@@ -4,6 +4,7 @@ struct LoginView: View {
     @Environment(AppState.self) private var appState
     @State private var email = ""
     @State private var password = ""
+    @State private var showPassword = false
 
     var body: some View {
         @Bindable var state = appState
@@ -28,10 +29,31 @@ struct LoginView: View {
                         .padding()
                         .background(.appSurface, in: .rect(cornerRadius: 12))
 
-                    SecureField("Пароль", text: $password)
+                    HStack(spacing: 10) {
+                        Group {
+                            if showPassword {
+                                TextField("Пароль", text: $password)
+                            } else {
+                                SecureField("Пароль", text: $password)
+                            }
+                        }
                         .textContentType(.password)
-                        .padding()
-                        .background(.appSurface, in: .rect(cornerRadius: 12))
+                        .autocorrectionDisabled()
+                        #if os(iOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+
+                        Button {
+                            showPassword.toggle()
+                        } label: {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(showPassword ? "Скрыть пароль" : "Показать пароль")
+                    }
+                    .padding()
+                    .background(.appSurface, in: .rect(cornerRadius: 12))
                 }
                 .padding(.horizontal, 24)
 
