@@ -5,6 +5,12 @@ import SwiftUI
 ///
 /// Цена показывается из StoreKit (`displayPrice`), а не из нашей базы: она уже
 /// в валюте магазина пользователя, и показывать другую App Review не разрешает.
+///
+/// Пробный период — тоже только из StoreKit (`introductoryOffer`) и только если
+/// Apple подтверждает, что пользователь на него имеет право. App Review
+/// отклоняет экран, где упомянут триал, которого нет в App Store Connect,
+/// и экран, где триал заметнее суммы списания (3.1.2(c)). Поэтому сумма
+/// списания здесь — самый крупный элемент, а триал идёт под ней мелко.
 struct PaywallView: View {
     @Environment(AppState.self) private var appState
     @State private var store = StoreKitService.shared
@@ -16,6 +22,8 @@ struct PaywallView: View {
     @State private var errorMessage: String?
     @State private var isRestoring = false
     @State private var isActivatingWithoutPurchase = false
+    /// Продукты, на пробный период которых у этого Apple ID есть право.
+    @State private var trialEligibleProductIds: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -45,6 +53,7 @@ struct PaywallView: View {
                             PlanCard(
                                 plan: plan,
                                 product: store.product(for: plan.appleProductId),
+                                showsTrial: trialEligibleProductIds.contains(plan.appleProductId),
                                 isSelected: selectedProductId == plan.appleProductId
                             ) {
                                 selectedProductId = plan.appleProductId
@@ -86,8 +95,8 @@ struct PaywallView: View {
                 .foregroundStyle(Color.accentColor)
                 .padding(.bottom, 8)
 
-            Text("3 дня бесплатно")
-                .font(.largeTitle.bold())
+            Text("Подписка Finside")
+                .font(.title.bold())
 
             Text("Деньги компании в одном месте: счета, выписки, согласования")
                 .font(.subheadline)
@@ -174,7 +183,7 @@ struct PaywallView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, minHeight: 22)
             } else {
-                Text("Начать пробный период")
+                Text("Оформить подписку")
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity, minHeight: 22)
             }
@@ -184,6 +193,21 @@ struct PaywallView: View {
         .padding(.horizontal, 24)
         .padding(.top, 28)
         .disabled(selectedProduct == nil || store.isPurchasing)
+    }
+
+    /// Право на пробный период решает Apple: оффер должен быть заведён в
+    /// App Store Connect, а Apple ID — ещё им не пользоваться.
+    private func loadTrialEligibility() async {
+        var eligible: Set<String> = []
+        for plan in plans {
+            guard let product = store.product(for: plan.appleProductId),
+                  let subscription = product.subscription,
+                  subscription.introductoryOffer?.paymentMode == .freeTrial,
+                  await subscription.isEligibleForIntroOffer
+            else { continue }
+            eligible.insert(plan.appleProductId)
+        }
+        trialEligibleProductIds = eligible
     }
 
     private var footer: some View {
@@ -246,6 +270,7 @@ struct PaywallView: View {
             plans = response.plans
             appAccountToken = response.appAccountToken.flatMap(UUID.init(uuidString:))
             try await store.loadProducts(ids: plans.map(\.appleProductId))
+            await loadTrialEligibility()
             // Продукт мог не приехать из App Store — выбираем первый доступный.
             selectedProductId = plans.first { store.product(for: $0.appleProductId) != nil }?
                 .appleProductId
@@ -305,25 +330,44 @@ struct PaywallView: View {
 private struct PlanCard: View {
     let plan: PlanInfo
     let product: Product?
+    /// Показывать пробный период: он заведён в App Store Connect и Apple ID имеет на него право.
+    let showsTrial: Bool
     let isSelected: Bool
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            HStack(alignment: .center, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
                     .font(.title3)
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    .padding(.top, 2)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(plan.name)
                         .font(.headline)
                         .foregroundStyle(.primary)
 
-                    if plan.hasTrial && plan.trialDays > 0 {
-                        Text("Первые \(plan.trialDays) \(dayWord(plan.trialDays)) бесплатно")
+                    if let product {
+                        // Сумма списания — главный элемент экрана (App Store 3.1.2(c)).
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                            Text(product.displayPrice)
+                                .font(.title.bold())
+                                .foregroundStyle(.primary)
+                            Text(periodTitle)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let trialText {
+                            Text(trialText)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        Text("недоступен")
                             .font(.caption)
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(.secondary)
                     }
 
                     if !plan.description.isEmpty {
@@ -334,22 +378,7 @@ private struct PlanCard: View {
                     }
                 }
 
-                Spacer(minLength: 8)
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    if let product {
-                        Text(product.displayPrice)
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                        Text(periodTitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("недоступен")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Spacer(minLength: 0)
             }
             .padding(16)
             .background(.appSurface, in: .rect(cornerRadius: 14))
@@ -369,6 +398,29 @@ private struct PlanCard: View {
         case "quarterly": return "в квартал"
         case "yearly": return "в год"
         default: return ""
+        }
+    }
+
+    /// «Первые 3 дня бесплатно, затем 4 990 ₸ в месяц» — длительность триала
+    /// и сумма после него, как требует App Review.
+    private var trialText: String? {
+        guard showsTrial,
+              let product,
+              let offer = product.subscription?.introductoryOffer,
+              offer.paymentMode == .freeTrial
+        else { return nil }
+        let length = trialLength(offer.period)
+        return "Первые \(length) бесплатно, затем \(product.displayPrice) \(periodTitle)"
+    }
+
+    private func trialLength(_ period: Product.SubscriptionPeriod) -> String {
+        let n = period.value
+        switch period.unit {
+        case .day: return "\(n) \(dayWord(n))"
+        case .week: return n == 1 ? "7 дней" : "\(n * 7) \(dayWord(n * 7))"
+        case .month: return n == 1 ? "месяц" : "\(n) мес."
+        case .year: return n == 1 ? "год" : "\(n) г."
+        @unknown default: return "\(n) \(dayWord(n))"
         }
     }
 
