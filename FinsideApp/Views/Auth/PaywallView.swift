@@ -90,11 +90,6 @@ struct PaywallView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            Image(systemName: "chart.line.uptrend.xyaxis")
-                .font(.system(size: 40))
-                .foregroundStyle(Color.accentColor)
-                .padding(.bottom, 8)
-
             Text("Подписка Finside")
                 .font(.title.bold())
 
