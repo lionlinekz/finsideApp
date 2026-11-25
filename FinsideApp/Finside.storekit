@@ -80,19 +80,14 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "4990",
+          "displayPrice" : "9990",
           "familyShareable" : false,
           "groupNumber" : 1,
           "internalID" : "20210002",
-          "introductoryOffer" : {
-            "internalID" : "20210003",
-            "paymentMode" : "free",
-            "subscriptionPeriod" : "P3D"
-          },
           "localizations" : [
             {
               "description" : "Все счета, выписки и согласования компании в одном месте",
-              "displayName" : "Finside Месячный",
+              "displayName" : "Finside.pro",
               "locale" : "ru_KZ"
             }
           ],

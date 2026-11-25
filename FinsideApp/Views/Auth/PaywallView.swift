@@ -344,7 +344,7 @@ private struct PlanCard: View {
                     .padding(.top, 2)
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(plan.name)
+                    Text(title)
                         .font(.headline)
                         .foregroundStyle(.primary)
 
@@ -370,8 +370,8 @@ private struct PlanCard: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if !plan.description.isEmpty {
-                        Text(plan.description)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -392,7 +392,32 @@ private struct PlanCard: View {
         .opacity(product == nil ? 0.5 : 1)
     }
 
+    /// Название и описание — из App Store Connect, чтобы совпадать с окном
+    /// оплаты Apple. Серверные plan.name/description — запасной вариант, пока
+    /// продукт не загрузился: в них тексты веб-тарифов, не про iOS.
+    private var title: String {
+        if let name = product?.displayName, !name.isEmpty { return name }
+        return plan.name
+    }
+
+    private var subtitle: String {
+        if let product { return product.description }
+        return ""
+    }
+
+    /// Срок подписки — тоже из App Store, а не из нашей базы.
     private var periodTitle: String {
+        if let period = product?.subscription?.subscriptionPeriod {
+            switch (period.unit, period.value) {
+            case (.month, 1): return "в месяц"
+            case (.month, 3): return "в квартал"
+            case (.month, 6): return "за 6 месяцев"
+            case (.year, 1): return "в год"
+            case (.week, 1): return "в неделю"
+            case (.day, let n): return "за \(n) \(dayWord(n))"
+            default: break
+            }
+        }
         switch plan.billingCycle {
         case "monthly": return "в месяц"
         case "quarterly": return "в квартал"
@@ -401,7 +426,7 @@ private struct PlanCard: View {
         }
     }
 
-    /// «Первые 3 дня бесплатно, затем 4 990 ₸ в месяц» — длительность триала
+    /// «Первые 3 дня бесплатно, затем 9 990 ₸ в месяц» — длительность триала
     /// и сумма после него, как требует App Review.
     private var trialText: String? {
         guard showsTrial,
